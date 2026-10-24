@@ -45,7 +45,7 @@ Branch `lane-d`. Commits: 01e38f9 foundation · e382717 gate board + rail · 624
   - Activity feed shows in-flight runs (outcome null) as running.
 
 ### Half-done
-- `components/shipyard/trace/*` (run-trace, timeline, json-block, twin-diff) and `components/shipyard/admin/*` (approvals, audit, library) were committed mid-flight from the builder as WIP (bf62823). They compile, but nobody has reviewed or rendered them. Still to confirm: in-flight run polling, the error-event box, diff null / snapshots null states, audit `name@vN` links, optimistic approve/reject rollback.
+- `components/shipyard/trace/*` (run-trace, timeline, json-block, twin-diff) and `components/shipyard/admin/*` (approvals, audit, library) were committed mid-flight from the builder as WIP (bf62823). They compile, and the builder later reported them finished: each page was rendered against prod via the proxy (error-run infra box, live run hides the diff, never-finished run, 404, library chips, 2 pending approvals, audit links). The orchestrator has NOT reviewed the diff, and approve/reject was never POSTed to prod. Still to confirm: in-flight run polling, the error-event box, diff null / snapshots null states, audit `name@vN` links, optimistic approve/reject rollback.
 
 ### Next steps (in order)
 1. Review the bf62823 diff (trace + admin) against the builder brief: real fixtures are in the session scratchpad, so re-curl prod GETs instead.
@@ -78,3 +78,5 @@ REQUESTS (contract/backend):
 - `live_spec_yaml` on AgentDetail (for the changed-line gutter).
 - Gate timeout → status `error`.
 - Speed up the gate GET.
+
+Extra contract notes from the trace builder: policy_block payload is {args, reason} (no policy field); error events can be name 'rate_limit' with retry_in_ms; audit targets also look like `agent:approval#N`; TestPackSummary lacks requires_tools.
