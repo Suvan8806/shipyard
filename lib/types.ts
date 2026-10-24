@@ -87,6 +87,7 @@ export interface Assertion {
   gte?: number;
   eq?: number;
   reply_contains?: string;
+  reply_not_contains?: string;
   critical: boolean;
   label?: string;
 }
