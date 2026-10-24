@@ -9,6 +9,7 @@ function rowKey(row: Row): string {
 /** One-line-per-change twin diff, for gate cards. Green added, red removed, amber changed. */
 export function MiniDiff({ diff, max = 4, className }: { diff: TwinDiff | null; max?: number; className?: string }) {
   if (!diff) return null;
+  // A seeded or errored run can report {} (no writes) as well as null (not captured).
   const lines: { kind: '+' | '-' | '~'; table: string; text: string; key: string }[] = [];
   for (const [table, d] of Object.entries(diff)) {
     if (!d) continue;
@@ -29,14 +30,24 @@ export function MiniDiff({ diff, max = 4, className }: { diff: TwinDiff | null; 
         <li
           key={l.key}
           className={cn(
-            'truncate rounded px-1.5',
-            l.kind === '+' && 'sy-bg-green sy-text-green',
-            l.kind === '-' && 'sy-bg-red sy-text-red',
-            l.kind === '~' && 'sy-bg-amber sy-text-amber',
+            'truncate rounded-sm px-1.5 text-foreground',
+            l.kind === '+' && 'bg-diff-add-bg',
+            l.kind === '-' && 'bg-diff-remove-bg',
+            l.kind === '~' && 'bg-diff-change-bg',
           )}
           title={`${l.table} ${l.text}`}
         >
-          {l.kind} {l.table}: {l.text}
+          <span
+            className={cn(
+              'mr-1 font-semibold',
+              l.kind === '+' && 'text-diff-add',
+              l.kind === '-' && 'text-diff-remove',
+              l.kind === '~' && 'text-diff-change',
+            )}
+          >
+            {l.kind === '-' ? '−' : l.kind}
+          </span>
+          {l.table} {l.text}
         </li>
       ))}
       {lines.length > max && <li className="px-1.5 text-muted-foreground">+{lines.length - max} more</li>}
