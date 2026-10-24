@@ -1,6 +1,10 @@
-// Deploy: validate -> rate limit -> create version 'running' -> gate (run in after()) ; gate results; rollback.
+// Deploy: validate -> rate limit -> create version 'running' -> gate ; gate results; rollback.
+// The gate fans out (lib/gate/queue.ts): one serverless invocation per scenario attempt, so a big suite is never
+// cut off by the 300 s function cap. SHIPYARD_GATE_MODE=inline runs the whole gate in one invocation instead.
 import * as repo from '../platform/repo';
-import { runGate } from '../gate/gate';
+import { mergeScenarios, runGate, tryReplay } from '../gate/gate';
+import { dispatchCtx, enqueueGate, pump, reconcileVersion, type DispatchCtx } from '../gate/queue';
+import { finalizeVersion } from '../gate/verdict';
 import { expandTestPacks } from '../gate/packs';
 import type { GateResult } from '../types';
 import type { DeployResponse, RollbackResponse } from '../contracts/api';
@@ -15,9 +19,47 @@ function maxDeploysPerHour(): number {
   return Number.isFinite(n) && n > 0 ? n : 20;
 }
 
+export interface RunGateOptions {
+  /** Dispatch context (request origin + protection bypass). Defaults to one derived from Vercel env. */
+  ctx?: DispatchCtx;
+  /** Wait (polling + supervising the queue) until the gate is terminal or ~280 s pass. Default true. */
+  wait?: boolean;
+}
+
 export interface StartedDeploy extends DeployResponse {
-  /** Runs the gate to completion. Pass to after(); never throws (errors mark the version 'error'). */
-  run: () => Promise<GateResult | null>;
+  /**
+   * Starts the gate. Pass to after(); never throws (errors mark the version 'error'). With wait (default) it
+   * resolves with the final result (or the latest one after ~280 s); with wait:false it resolves once dispatched.
+   */
+  run: (opts?: RunGateOptions) => Promise<GateResult | null>;
+}
+
+function gateMode(): 'inline' | 'fanout' {
+  return process.env.SHIPYARD_GATE_MODE === 'inline' ? 'inline' : 'fanout';
+}
+
+/** Reconcile on read (stale sweep, finalize, lost-dispatch detection). Never throws. */
+export async function reconcileGate(name: string, version: number): Promise<{ needsPump: boolean }> {
+  if (!Number.isInteger(version) || version < 1) return { needsPump: false };
+  try {
+    const r = await reconcileVersion(name, version);
+    return { needsPump: r.needsPump };
+  } catch (e) {
+    console.error('[deploy] reconcile failed', e);
+    return { needsPump: false };
+  }
+}
+
+/** Polls the version, re-pumping the queue when slots free up, until it is terminal or the timeout passes. */
+async function superviseGate(name: string, version: number, ctx: DispatchCtx, timeoutMs = 280_000, intervalMs = 3_000): Promise<GateResult> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const { needsPump } = await reconcileGate(name, version);
+    if (needsPump) await pump(name, version, ctx);
+    const v = await repo.getVersion(name, version);
+    if (!v || v.status !== 'running' || Date.now() + intervalMs > deadline) return getGateResult(name, version);
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
 }
 
 export async function startDeploy(name: string, actor = 'api'): Promise<StartedDeploy> {
@@ -41,18 +83,31 @@ export async function startDeploy(name: string, actor = 'api'): Promise<StartedD
   });
   await repo.audit(actor, 'deploy.start', name, { version, scenarios: scenarios.length });
 
-  const run = async (): Promise<GateResult | null> => {
+  const run = async (opts: RunGateOptions = {}): Promise<GateResult | null> => {
     try {
-      return await runGate({ agent: name, version, spec, scenarios, specHash });
+      if (gateMode() === 'inline') return await runGate({ agent: name, version, spec, scenarios, specHash });
+      const ctx = opts.ctx ?? dispatchCtx();
+      const startedAt = new Date().toISOString();
+      const replay = await tryReplay({ agent: name, version, spec, specHash, startedAt }, mergeScenarios(spec, scenarios));
+      if (replay) return replay;
+      const queued = await enqueueGate({ agent: name, version, spec, scenarios });
+      if (queued === 0) {
+        await finalizeVersion({ agent: name, version, minPassRate: spec.gate?.min_pass_rate ?? 1, auditDetail: { spec_hash: specHash } });
+      } else {
+        await pump(name, version, ctx);
+      }
+      if (opts.wait === false) return null;
+      // Workers own the outcome from here; a supervision hiccup must not fail the version.
+      return await superviseGate(name, version, ctx).catch((e) => {
+        console.error(`[deploy] supervising ${name} v${version} failed:`, e);
+        return null;
+      });
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       console.error(`[deploy] gate failed for ${name} v${version}:`, message);
       try {
-        const v = await repo.getVersion(name, version);
-        if (v?.status === 'running') {
-          await repo.finishVersion(name, version, { status: 'error', pass_rate: null, total_cost_usd: null });
-        }
-        await repo.audit('gate', 'deploy.error', name, { version, message });
+        const done = await repo.finishVersionIfRunning(name, version, { status: 'error', pass_rate: null, total_cost_usd: null });
+        if (done) await repo.audit('gate', 'deploy.error', name, { version, message });
       } catch (inner) {
         console.error('[deploy] could not record gate error:', inner);
       }

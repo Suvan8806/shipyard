@@ -32,9 +32,12 @@ vi.mock('@/lib/platform/repo', async (importActual) => {
         .map((r) => ({ ...r, assertions: r.assertions ?? [], reply_check: null, diff: r.diff ?? null })),
     ),
     getScenarioResultByRun: vi.fn(async () => null),
-    finishVersion: vi.fn(async (agent: string, version: number, res: Record<string, unknown>) => {
+    finishVersionIfRunning: vi.fn(async (agent: string, version: number, res: Record<string, unknown>) => {
+      if (store.finished.some((f) => f.agent === agent && f.version === version)) return false;
       store.finished.push({ agent, version, ...res });
+      return true;
     }),
+    sumRunCosts: vi.fn(async (ids: string[]) => ids.length * 0.001),
     setCurrentVersion: vi.fn(async (agent: string, v: number | null) => {
       store.current.set(agent, v);
     }),

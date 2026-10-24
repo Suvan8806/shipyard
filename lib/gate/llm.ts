@@ -1,15 +1,25 @@
 // Model resolution for the gate's own small LLM calls (reply judge, paraphrase variants).
 // Uses the shared resolver (lib/runtime/model.ts) so gate and runtime route model strings identically.
+// These calls use the fast profile (Gemini Flash when a Google key is configured), wrapped in the same
+// rate-limit backoff + fallback chain as agent runs, with a short budget: they are informational.
 import type { LanguageModel } from 'ai';
 import { PROFILES } from '../library';
-import { resolveModel } from '../runtime/model';
+import { resilientFor, resolveModel } from '../runtime/model';
 
 export const FAST_DEFAULT = 'groq/openai/gpt-oss-20b';
+export const GEMINI_FAST = 'google/gemini-3.5-flash';
 
 export { resolveModel };
+
+/** The fast-profile model id: SHIPYARD_FAST_MODEL, else Gemini Flash if a Google key is set, else the profile default. */
+export function fastModelId(): string {
+  if (process.env.SHIPYARD_FAST_MODEL) return process.env.SHIPYARD_FAST_MODEL;
+  if (process.env.GOOGLE_GENERATIVE_AI_API_KEY) return GEMINI_FAST;
+  return PROFILES.fast?.model ?? FAST_DEFAULT;
+}
 
 /** The `fast` profile model (or an injected override in tests). */
 export function fastModel(override?: LanguageModel): LanguageModel {
   if (override) return override;
-  return resolveModel(process.env.SHIPYARD_FAST_MODEL ?? PROFILES.fast?.model ?? FAST_DEFAULT);
+  return resilientFor(fastModelId(), { budgetMs: 20_000, perModelBudgetMs: 10_000 }).model;
 }
