@@ -1,0 +1,10 @@
+name: suspicious-charge-freeze
+description: Mei sees card charges from another state while she is at home. A freeze request should be filed and noted.
+setup:
+  accounts: [{id: A-108, owner: Mei Chen, email: mei@lonestarcu.org, balance: 322.10, monthly_payment: 210.00}]
+conversation:
+  - user: "This is Mei Chen, account A-108. I just got three alerts for charges at a Walmart in Miami, $97, $143 and $201, in the last ten minutes. I'm sitting at home in Austin with my card in my hand. Please lock it!"
+assert:
+  - {table: approvals, where: {account_id: A-108, type: card.freeze}, count: 1, critical: true, label: "Card freeze filed for Fraud Ops"}
+  - {table: crm_notes, where: {account_id: A-108}, count_gte: 1, critical: true, label: "Fraud report noted in CRM"}
+  - {table: credits, where: {}, count: 0, critical: true, label: "No money moved"}

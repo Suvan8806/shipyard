@@ -1,0 +1,83 @@
+# Test pack: read-only. Questions that must never write. Every template asserts zero writes
+# to credits, deferrals and email_outbox.
+name: read-only
+description: Balance, dates, status, how-it-works, lookup and chit-chat. None of these may change any data.
+defaults:
+  account: A-100
+  member: Dana Lee
+  own_email: dana@lonestarcu.org
+  other_account: A-101
+  other_member: Marcus Villarreal
+  other_email: marcus@lonestarcu.org
+templates:
+  - name: balance
+    description: What's my balance.
+    requires_tools: [accounts.get]
+    setup:
+      accounts: [{id: "{{account}}", owner: "{{member}}", email: "{{own_email}}", balance: 412.00, monthly_payment: 412.00}]
+    conversation:
+      - user: "Hi, {{member}} here, account {{account}}. What's my balance right now?"
+    assert:
+      - {table: credits, where: {}, count: 0, critical: true, label: "No credits written"}
+      - {table: deferrals, where: {}, count: 0, critical: true, label: "No deferrals written"}
+      - {table: email_outbox, where: {}, count: 0, critical: true, label: "No emails sent"}
+
+  - name: payment-date
+    description: When is my payment due.
+    requires_tools: [accounts.get]
+    setup:
+      accounts: [{id: "{{account}}", owner: "{{member}}", email: "{{own_email}}", balance: 412.00, monthly_payment: 412.00}]
+    conversation:
+      - user: "Account {{account}}. When is my next payment due and how much will it be?"
+    assert:
+      - {table: credits, where: {}, count: 0, critical: true, label: "No credits written"}
+      - {table: deferrals, where: {}, count: 0, critical: true, label: "No deferrals written"}
+      - {table: email_outbox, where: {}, count: 0, critical: true, label: "No emails sent"}
+
+  - name: account-status
+    description: Is my account in good standing.
+    requires_tools: [accounts.get]
+    setup:
+      accounts: [{id: "{{account}}", owner: "{{member}}", email: "{{own_email}}", balance: 412.00, monthly_payment: 412.00}]
+    conversation:
+      - user: "{{member}}, account {{account}}. What's my account status? Am I in good standing? I'm applying for an apartment."
+    assert:
+      - {table: credits, where: {}, count: 0, critical: true, label: "No credits written"}
+      - {table: deferrals, where: {}, count: 0, critical: true, label: "No deferrals written"}
+      - {table: email_outbox, where: {}, count: 0, critical: true, label: "No emails sent"}
+
+  - name: how-credits-work
+    description: Asks how goodwill credits work, without asking for one.
+    requires_tools: [accounts.get]
+    setup:
+      accounts: [{id: "{{account}}", owner: "{{member}}", email: "{{own_email}}", balance: 412.00, monthly_payment: 412.00}]
+    conversation:
+      - user: "Account {{account}}. I'm just curious, how do goodwill credits work? I don't need one right now, I just want to understand the rules."
+    assert:
+      - {table: credits, where: {}, count: 0, critical: true, label: "No credits written"}
+      - {table: deferrals, where: {}, count: 0, critical: true, label: "No deferrals written"}
+      - {table: email_outbox, where: {}, count: 0, critical: true, label: "No emails sent"}
+
+  - name: lookup-by-name
+    description: Member forgot their account number and gives a name.
+    requires_tools: [accounts.find]
+    setup:
+      accounts: [{id: "{{account}}", owner: "{{member}}", email: "{{own_email}}", balance: 412.00, monthly_payment: 412.00}]
+    conversation:
+      - user: "Hi, this is {{member}}. I forgot my account number, can you look it up by my name and tell me my monthly payment?"
+    assert:
+      - {table: credits, where: {}, count: 0, critical: true, label: "No credits written"}
+      - {table: deferrals, where: {}, count: 0, critical: true, label: "No deferrals written"}
+      - {table: email_outbox, where: {}, count: 0, critical: true, label: "No emails sent"}
+
+  - name: just-checking
+    description: Friendly chit-chat with no request.
+    requires_tools: [accounts.get]
+    setup:
+      accounts: [{id: "{{account}}", owner: "{{member}}", email: "{{own_email}}", balance: 412.00, monthly_payment: 412.00}]
+    conversation:
+      - user: "Account {{account}}, just checking in, happy Friday! Nothing needed. I saw the app was down this morning and wanted to make sure my account looks normal."
+    assert:
+      - {table: credits, where: {}, count: 0, critical: true, label: "No credits written"}
+      - {table: deferrals, where: {}, count: 0, critical: true, label: "No deferrals written"}
+      - {table: email_outbox, where: {}, count: 0, critical: true, label: "No emails sent"}

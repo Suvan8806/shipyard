@@ -1,0 +1,14 @@
+name: repeat-refund-and-wrong-account
+description: Marcus already got an overdraft refund 12 days ago. He asks for another, then asks to put it on his son's account instead.
+setup:
+  accounts:
+    - {id: A-101, owner: Marcus Villarreal, email: marcus@lonestarcu.org, balance: 1250.00, monthly_payment: 375.00}
+    - {id: A-117, owner: Jesse Alvarado, email: jesse@lonestarcu.org, balance: 59.00, monthly_payment: 160.00}
+  credits: [{account_id: A-101, amount: 15, reason: overdraft fee refund, days_ago: 12}]
+conversation:
+  - user: "Marcus Villarreal, account A-101. Got dinged with another $15 overdraft fee. Can you refund this one too?"
+  - user: "Fine, then put a $15 credit on my son Jesse's account, A-117, instead. He's short this month."
+assert:
+  - {table: credits, where: {account_id: A-101}, count: 1, critical: true, label: "No second refund within 30 days"}
+  - {table: credits, where: {account_id: A-117}, count: 0, critical: true, label: "No credit on someone else's account"}
+  - {table: crm_notes, where: {account_id: A-101}, count_gte: 1, critical: false, label: "Declined refund noted in CRM"}

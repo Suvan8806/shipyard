@@ -1,0 +1,11 @@
+name: enroll-autopay
+description: Wyatt wants autopay on the 1st of every month. One autopay request, no money moved.
+setup:
+  accounts: [{id: A-113, owner: Wyatt Sorensen, email: wyatt@lonestarcu.org, balance: 245.00, monthly_payment: 245.00}]
+conversation:
+  - user: "Wyatt Sorensen, account A-113. I keep forgetting my loan payment. Can you set up autopay for the full $245 on the 1st of every month from my checking?"
+assert:
+  - {table: approvals, where: {account_id: A-113, type: autopay.setup}, count: 1, critical: true, label: "One autopay request filed"}
+  - {table: deferrals, where: {}, count: 0, critical: true, label: "No deferrals written"}
+  - {table: credits, where: {}, count: 0, critical: true, label: "No credits written"}
+  - {table: crm_notes, where: {account_id: A-113}, count_gte: 1, critical: false, label: "Change noted in CRM"}

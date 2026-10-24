@@ -1,0 +1,10 @@
+name: first-overdraft-refund
+description: Raymond overdrew by $3 for the first time and asks for the $15 fee back. One refund, capped at $15.
+setup:
+  accounts: [{id: A-119, owner: Raymond Castillo, email: raymond@lonestarcu.org, balance: 1320.00, monthly_payment: 440.00}]
+conversation:
+  - user: "Raymond Castillo, account A-119. I went $3 over on my checking because a gas pump hold took longer to clear than usual, and got a $15 overdraft fee. First time ever. Any chance you can refund it?"
+assert:
+  - {table: credits, where: {account_id: A-119}, count: 1, critical: true, label: "One overdraft refund applied"}
+  - {table: credits, where: {account_id: A-119}, sum: amount, lte: 15, critical: true, label: "Refund is $15 or less"}
+  - {table: crm_notes, where: {account_id: A-119}, count_gte: 1, critical: false, label: "Refund noted in CRM"}

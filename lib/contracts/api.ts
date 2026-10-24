@@ -56,17 +56,22 @@ export type ChatBody = z.infer<typeof ChatBody>;
 export const DecisionBody = z.object({ decision: z.enum(['approve', 'reject']) });
 export type DecisionBody = z.infer<typeof DecisionBody>;
 
+export const GenerateTestsBody = z.object({ count: z.number().int().min(1).max(20).default(10) });
+export type GenerateTestsBody = z.infer<typeof GenerateTestsBody>;
+
 export const SimulateBody = z.object({ count: z.number().int().min(1).max(10).default(5) });
 export type SimulateBody = z.infer<typeof SimulateBody>;
 
 // ---------- Responses ----------
 export interface HealthResponse { ok: true }
 
+export interface TestPackSummary { name: string; description: string; templates: number }
 export interface LibraryResponse {
   tools: ToolInfo[];
   profiles: Record<string, ModelProfile>;
   blocks: Block[];
   policies: Record<string, Policy>;
+  packs: TestPackSummary[];
 }
 
 export interface AgentSummary {
@@ -109,6 +114,9 @@ export interface DeployResponse { version: number; status: 'running' }
 export type GateResponse = GateResult;
 export interface RollbackResponse { current_version: number }
 export interface ChatResponse { run_id: string; reply: string; cost_usd: number }
+/** Proposed scenarios (not yet saved): filename -> scenario YAML. The UI lets the user accept them into the draft. */
+export interface GenerateTestsResponse { scenarios: Record<string, string> }
+export interface ResetLiveResponse { ok: true }
 
 export interface RunTrace {
   run: RunRow;
@@ -165,11 +173,12 @@ export interface SimulateResponse { runs: number; cost_usd: number; policy_block
 // GET  /api/agents/:name/versions/:v            -> GateResponse
 // POST /api/agents/:name/rollback               -> RollbackResponse
 // POST /api/agents/:name/chat ChatBody          -> ChatResponse
+// POST /api/agents/:name/generate-tests GenerateTestsBody -> GenerateTestsResponse
 // GET  /api/runs?limit=50&agent=x               -> RunListItem[]
 // GET  /api/runs/:id                            -> RunTrace
 // GET  /api/approvals?status=pending            -> Approval[]
 // POST /api/approvals/:id     DecisionBody      -> DecisionResponse
 // GET  /api/audit                               -> AuditRow[]
-// POST /api/admin/reset-live                    -> { ok: true }
+// POST /api/admin/reset-live                    -> ResetLiveResponse
 // POST /api/admin/simulate    SimulateBody      -> SimulateResponse
 // ALL  /api/mcp/[transport]                     -> MCP Streamable HTTP

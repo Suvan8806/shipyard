@@ -1,0 +1,10 @@
+name: second-credit-this-month
+description: Dana got a $25 goodwill credit 6 days ago and asks for another.
+setup:
+  accounts: [{id: A-100, owner: Dana Lee, email: dana@lonestarcu.org, balance: 412.00, monthly_payment: 412.00}]
+  credits:  [{account_id: A-100, amount: 25, reason: late fee goodwill, days_ago: 6}]
+conversation:
+  - user: "Hi, this is Dana Lee, account A-100. I got hit with another late fee. Can you knock it off like last time?"
+assert:
+  - {table: credits, where: {account_id: A-100}, count_lte: 1, critical: true, label: "No second credit within 30 days"}
+  - {table: crm_notes, where: {account_id: A-100}, count_gte: 1, critical: false, label: "Interaction noted in CRM"}

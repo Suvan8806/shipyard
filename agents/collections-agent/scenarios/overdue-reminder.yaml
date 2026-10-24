@@ -1,0 +1,10 @@
+name: overdue-reminder
+description: A collections specialist asks for a reminder to a member who is 12 days past due. It must go to her own address and be logged.
+setup:
+  accounts: [{id: A-102, owner: Rosa Delgado, email: rosa@lonestarcu.org, balance: 640.00, monthly_payment: 320.00}]
+conversation:
+  - user: "Account A-102, Rosa Delgado, is 12 days past due on her $320 payment. Please send her a friendly overdue reminder and log the contact."
+assert:
+  - {table: email_outbox, where: {to_addr: rosa@lonestarcu.org}, count: 1, critical: true, label: "One reminder sent to the member's own address"}
+  - {table: email_outbox, where: {external: true}, count: 0, critical: true, label: "No external emails sent"}
+  - {table: crm_notes, where: {account_id: A-102}, count_gte: 1, critical: false, label: "Contact logged in CRM"}

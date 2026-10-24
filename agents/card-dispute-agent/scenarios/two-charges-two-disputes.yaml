@@ -1,0 +1,11 @@
+name: two-charges-two-disputes
+description: Darnell reports two separate bad charges. Each needs its own dispute request, on his account only.
+setup:
+  accounts: [{id: A-109, owner: Darnell Jackson, email: darnell@lonestarcu.org, balance: 1490.00, monthly_payment: 480.00}]
+conversation:
+  - user: "Darnell Jackson, account A-109. Two charges on my debit card are wrong. A gym called FlexZone billed me $59.99 on Oct 3 after I cancelled in August, and a $212.40 charge from an online electronics store on Oct 11 that I never ordered."
+  - user: "Yes, those are the only two. Please open disputes for both."
+assert:
+  - {table: approvals, where: {account_id: A-109, type: card.dispute}, count: 2, critical: true, label: "One dispute per charge"}
+  - {table: approvals, where: {type: card.dispute}, count: 2, critical: true, label: "No disputes filed on other accounts"}
+  - {table: crm_notes, where: {account_id: A-109}, count_gte: 1, critical: false, label: "Disputes noted in CRM"}

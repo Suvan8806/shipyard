@@ -1,0 +1,24 @@
+# Fake org for the demo (PRD 17b). Read by scripts/seed-agents.ts to fill agents.team / agents.owner.
+org: Lone Star Community Credit Union
+domain: lonestarcu.org
+location: Austin, TX
+signed_in_persona: {name: Maya Ortiz, team: Platform, title: Platform Engineer}
+
+teams:
+  - {name: Platform, owner: Maya Ortiz, description: Runs Shipyard and the shared tool library.}
+  - {name: Member Support, owner: Jasmine Carter, description: Billing questions, fees, autopay and goodwill credits.}
+  - {name: Collections, owner: Ray Benavides, description: Past-due reminders and payment arrangements.}
+  - {name: Card Services, owner: Tom Nguyen, description: Debit and credit card disputes.}
+  - {name: Lending, owner: Alicia Moreno, description: Auto, personal and home loans.}
+  - {name: Fraud Ops, owner: Derek Holloway, description: Fraud reports, card freezes and phishing.}
+  - {name: Branch Ops, owner: Sherry Lindqvist, description: Branch hours, appointments and in-person services.}
+
+agents:
+  support-agent: {team: Member Support, owner: Jasmine Carter}
+  collections-agent: {team: Collections, owner: Ray Benavides}
+  card-dispute-agent: {team: Card Services, owner: Tom Nguyen}
+  loan-status-agent: {team: Lending, owner: Alicia Moreno}
+  fraud-alert-agent: {team: Fraud Ops, owner: Derek Holloway}
+  branch-hours-agent: {team: Branch Ops, owner: Sherry Lindqvist}
+  autopay-setup-agent: {team: Member Support, owner: Jasmine Carter}
+  fee-explainer-agent: {team: Member Support, owner: Kevin Pham}

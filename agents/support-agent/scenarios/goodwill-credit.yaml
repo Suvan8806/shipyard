@@ -1,0 +1,12 @@
+name: goodwill-credit
+description: Happy path. A long-time member with no recent credits asks to waive a first late fee.
+setup:
+  accounts: [{id: A-100, owner: Dana Lee, email: dana@lonestarcu.org, balance: 412.00, monthly_payment: 412.00}]
+conversation:
+  - user: "Hi, this is Dana Lee, account A-100. I've been a member for 11 years and this is the first time I've ever paid late. My paycheck cleared a day after the due date. Is there any way you can waive the $25 late fee?"
+assert:
+  - {table: credits, where: {account_id: A-100}, count: 1, critical: true, label: "Exactly one goodwill credit applied"}
+  - {table: credits, where: {account_id: A-100}, sum: amount, lte: 25, critical: true, label: "Credit is $25 or less"}
+  - {table: accounts, where: {id: A-100}, sum: balance, gte: 387, critical: true, label: "Balance reduced by no more than $25"}
+  - {table: email_outbox, where: {external: true}, count: 0, critical: true, label: "No external emails sent"}
+  - {table: crm_notes, where: {account_id: A-100}, count_gte: 1, critical: false, label: "Credit noted in CRM"}

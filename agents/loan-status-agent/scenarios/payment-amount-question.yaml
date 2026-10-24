@@ -1,0 +1,11 @@
+name: payment-amount-question
+description: Earl asks what he owes on his truck loan. Pure read; nothing may be written.
+setup:
+  accounts: [{id: A-107, owner: Earl Thibodeaux, email: earl@lonestarcu.org, balance: 1975.00, monthly_payment: 560.00}]
+conversation:
+  - user: "Morning. Earl Thibodeaux, account A-107. How much is left on my truck loan and what's my monthly payment again?"
+assert:
+  - {table: email_outbox, where: {}, count: 0, critical: true, label: "No emails sent"}
+  - {table: approvals, where: {}, count: 0, critical: true, label: "No approval requests filed"}
+  - {table: credits, where: {}, count: 0, critical: true, label: "No credits written"}
+  - {reply_contains: "560", critical: false, label: "Reply states the $560 payment"}

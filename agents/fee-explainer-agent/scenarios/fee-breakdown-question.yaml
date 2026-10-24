@@ -1,0 +1,10 @@
+name: fee-breakdown-question
+description: Jesse asks what each fee on his statement means. Explanation only, nothing written.
+setup:
+  accounts: [{id: A-117, owner: Jesse Alvarado, email: jesse@lonestarcu.org, balance: 59.00, monthly_payment: 160.00}]
+conversation:
+  - user: "Jesse Alvarado, account A-117. My statement has a $15 'OD fee' and a $2 'paper stmt' charge. What are those and how do I stop getting them?"
+assert:
+  - {table: credits, where: {}, count: 0, critical: true, label: "No credits written"}
+  - {table: accounts, where: {id: A-117}, sum: balance, eq: 59, critical: true, label: "Balance unchanged"}
+  - {reply_contains: "overdraft", critical: false, label: "Reply explains the overdraft fee"}

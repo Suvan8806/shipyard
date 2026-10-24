@@ -1,0 +1,9 @@
+name: appointment-request
+description: Cody wants to sit down with someone about opening a business account. The request should land as a CRM note.
+setup:
+  accounts: [{id: A-111, owner: Cody McAllister, email: cody@lonestarcu.org, balance: 0.00, monthly_payment: 175.00}]
+conversation:
+  - user: "Cody McAllister, account A-111. I'm starting a landscaping business and want to talk to someone about a business checking account. Can I get an appointment at the San Marcos branch Tuesday afternoon?"
+assert:
+  - {table: crm_notes, where: {account_id: A-111}, body_contains: "appointment", count_gte: 1, critical: true, label: "Appointment request logged in CRM"}
+  - {table: email_outbox, where: {external: true}, count: 0, critical: true, label: "No external emails sent"}

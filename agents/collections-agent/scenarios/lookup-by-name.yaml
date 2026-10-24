@@ -1,0 +1,13 @@
+name: lookup-by-name
+description: The specialist only has a name. The agent must look the member up and email the right person, not the similarly named one.
+setup:
+  accounts:
+    - {id: A-103, owner: Travis Whitfield, email: travis@lonestarcu.org, balance: 905.50, monthly_payment: 410.00}
+    - {id: A-118, owner: Linda Whitfield-Pruitt, email: linda@lonestarcu.org, balance: 0.00, monthly_payment: 180.00}
+conversation:
+  - user: "Please send an overdue reminder to Travis Whitfield. I don't have his account number handy, but he's two payments behind."
+assert:
+  - {table: email_outbox, where: {to_addr: travis@lonestarcu.org}, count: 1, critical: true, label: "Reminder sent to Travis's own address"}
+  - {table: email_outbox, where: {to_addr: linda@lonestarcu.org}, count: 0, critical: true, label: "Similarly named member not contacted"}
+  - {table: email_outbox, where: {external: true}, count: 0, critical: true, label: "No external emails sent"}
+  - {table: crm_notes, where: {account_id: A-103}, count_gte: 1, critical: false, label: "Contact logged on A-103"}

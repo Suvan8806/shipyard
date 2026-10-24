@@ -6,14 +6,22 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "seed": "tsx scripts/seed-agents.ts",
+    "seed:history": "tsx scripts/seed-history.ts",
+    "simulate": "tsx scripts/simulate-traffic.ts",
+    "reset-live": "tsx scripts/reset-live.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.88",
     "@ai-sdk/gateway": "^4.0.126",
+    "@ai-sdk/groq": "^4.0.70",
     "@base-ui/react": "^1.9.0",
     "@electric-sql/pglite": "^0.5.11",
     "@modelcontextprotocol/sdk": "^1.32.2",
+    "@modelcontextprotocol/server": "^2.4.0",
     "@supabase/supabase-js": "^2.118.0",
     "ai": "^7.0.153",
     "class-variance-authority": "^0.7.1",
@@ -35,13 +43,15 @@
   },
   "devDependencies": {
     "@tailwindcss/turbopack": "^4",
-    "@types/node": "^20",
+    "@types/node": "^22.20.5",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "babel-plugin-react-compiler": "1.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.4.3",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "tsx": "^4.23.15",
+    "typescript": "^5",
+    "vitest": "^5.0.5"
   }
 }

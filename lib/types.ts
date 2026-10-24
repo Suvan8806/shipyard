@@ -56,7 +56,12 @@ export interface ToolInfo {
 export interface Block { name: string; text: string }
 
 // ---------- Spec + scenarios ----------
-export interface GateConfig { min_pass_rate: number; runs_per_scenario: number }
+export interface GateConfig {
+  min_pass_rate: number;
+  runs_per_scenario: number;
+  /** Paraphrase variants per scenario (PRD 10.5). 0 = off. */
+  variants: number;
+}
 export interface AgentSpec {
   name: string;
   goal: string;
@@ -64,6 +69,8 @@ export interface AgentSpec {
   inherit: string[];
   tools: string[];
   instructions: string;
+  /** Shared test packs from the library (PRD 10.5), e.g. ['security', 'money-safety']. */
+  test_packs: string[];
   gate: GateConfig;
 }
 /** Rows may include `days_ago: N` which becomes created_at = now() - N days. */
@@ -83,12 +90,27 @@ export interface Assertion {
   critical: boolean;
   label?: string;
 }
+export type ScenarioSource = 'spec' | 'pack' | 'generated';
 export interface Scenario {
   name: string;
   description: string;
   setup: ScenarioSetup;
   conversation: { user: string }[];
   assert: Assertion[];
+  /** Where the scenario came from: hand-written in the spec, a test pack, or LLM-generated. */
+  source: ScenarioSource;
+  /** Pack name when source = 'pack'. */
+  pack?: string;
+}
+// NAMING CONVENTION (scenario_results has no source/pack columns): pack scenarios are named
+// `<pack>/<template-name>` (e.g. `security/fake-admin-mode`), generated ones start with `gen-`,
+// everything else is 'spec'. lib/platform/repo.ts#inferScenarioSource derives source + pack from the name.
+/** A scenario template inside a pack; only applied when the agent has every tool in requires_tools. */
+export type TestPackTemplate = Scenario & { requires_tools: string[] };
+export interface TestPack {
+  name: string;
+  description: string;
+  templates: TestPackTemplate[];
 }
 export interface ValidationError { path: string; message: string }
 export interface ValidationResult { ok: boolean; errors: ValidationError[] }
@@ -162,6 +184,17 @@ export interface ScenarioResultSummary {
   reply_check: ReplyCheck | null;
   final_reply: string | null;
   diff: TwinDiff | null;
+  source: ScenarioSource;
+  pack?: string;
+}
+export interface GateCoverage {
+  tools_tested: string[];
+  tools_untested: string[];
+  policies_tested: string[];
+  tables_checked: string[];
+  total_tests: number;
+  /** Keyed by 'spec', 'generated', or 'pack:<name>'. */
+  by_source: Record<string, number>;
 }
 export interface GateResult {
   agent: string;
@@ -175,6 +208,7 @@ export interface GateResult {
   current_version: number | null;
   scenario_names: string[];
   results: ScenarioResultSummary[];
+  coverage: GateCoverage | null;
 }
 
 // ---------- Cross-lane function signatures (stubbed in W0, implemented by the owning lane) ----------
@@ -201,3 +235,6 @@ export type RunGateFn = (args: {
   scenarios: Scenario[];
   specHash: string;
 }) => Promise<GateResult>;                                             // lib/gate/gate.ts
+export type ExpandTestPacksFn = (spec: AgentSpec) => Scenario[];       // lib/gate/packs.ts
+// Lane A (testing at scale)
+export type GenerateScenariosFn = (spec: AgentSpec, count: number) => Promise<Scenario[]>; // lib/spec/generate.ts

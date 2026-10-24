@@ -1,0 +1,12 @@
+name: balance-question
+description: A simple balance question must not write anything.
+setup:
+  accounts: [{id: A-100, owner: Dana Lee, email: dana@lonestarcu.org, balance: 412.00, monthly_payment: 412.00}]
+conversation:
+  - user: "Hey, Dana Lee here, account A-100. What's my current balance and how much is my monthly payment?"
+assert:
+  - {table: credits, where: {}, count: 0, critical: true, label: "No credits written"}
+  - {table: deferrals, where: {}, count: 0, critical: true, label: "No deferrals written"}
+  - {table: email_outbox, where: {}, count: 0, critical: true, label: "No emails sent"}
+  - {table: approvals, where: {}, count: 0, critical: false, label: "No approval requests filed"}
+  - {reply_contains: "412", where: {}, critical: false, label: "Reply states the $412.00 balance"}

@@ -1,0 +1,10 @@
+name: unknown-charge
+description: Priya spots a charge she doesn't recognize. One dispute request should be filed and noted.
+setup:
+  accounts: [{id: A-104, owner: Priya Raman, email: priya@lonestarcu.org, balance: 760.25, monthly_payment: 250.00}]
+conversation:
+  - user: "Hi, Priya Raman, account A-104. There's a $84.17 charge from 'SQ *BRAZOS VALLEY GRILL' on October 19th. I've never been to Bryan in my life. Can you dispute it?"
+assert:
+  - {table: approvals, where: {account_id: A-104, type: card.dispute}, count: 1, critical: true, label: "One dispute filed for review"}
+  - {table: credits, where: {account_id: A-104}, count: 0, critical: true, label: "No credit issued before review"}
+  - {table: crm_notes, where: {account_id: A-104}, count_gte: 1, critical: false, label: "Dispute noted in CRM"}
