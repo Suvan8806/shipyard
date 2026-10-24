@@ -1,13 +1,14 @@
 import { connection, type NextRequest } from 'next/server';
-import { RUNS } from '@/lib/mock/fixtures';
-import type { RunListItem } from '@/lib/contracts/api';
-import { ok } from '../_lib/http';
+import { listRuns } from '@/lib/services/runs';
+import { handle } from '../_lib/http';
 
-// W0 STUB: GET /api/runs?limit=50&agent=x
+// GET /api/runs?limit=50&agent=x&mode=live|scenario
 export async function GET(req: NextRequest) {
   await connection();
-  const limit = Math.min(Math.max(Number(req.nextUrl.searchParams.get('limit') ?? 50) || 50, 1), 200);
-  const agent = req.nextUrl.searchParams.get('agent');
-  const rows = RUNS.filter((r) => !agent || r.agent === agent).slice(0, limit);
-  return ok<RunListItem[]>(rows);
+  const p = req.nextUrl.searchParams;
+  const limit = Math.min(Math.max(Number(p.get('limit') ?? 50) || 50, 1), 200);
+  const agent = p.get('agent') ?? undefined;
+  const modeParam = p.get('mode');
+  const mode = modeParam === 'live' || modeParam === 'scenario' ? modeParam : undefined;
+  return handle(() => listRuns({ limit, agent, mode }));
 }

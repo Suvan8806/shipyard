@@ -1,17 +1,24 @@
-import { AGENTS } from '@/lib/mock/fixtures';
+import { after } from 'next/server';
 import type { DeployResponse } from '@/lib/contracts/api';
-import { fail, ok, requireAdmin } from '../../../_lib/http';
+import { startDeploy } from '@/lib/services/deploy';
+import { actorOf, guard, handle } from '../../../_lib/http';
 
+// The gate keeps running in after() once the response is sent; bounded by maxDuration.
 export const maxDuration = 300;
 
 type Ctx = { params: Promise<{ name: string }> };
 
-// W0 STUB: pretends to start the gate. Lane C: createVersion + after(() => runGate(...)).
 export async function POST(req: Request, ctx: Ctx) {
-  const denied = requireAdmin(req);
-  if (denied) return denied;
   const { name } = await ctx.params;
-  const agent = AGENTS.find((a) => a.name === name);
-  if (!agent) return fail('not_found', `agent ${name} not found`);
-  return ok<DeployResponse>({ version: (agent.latest_version ?? 0) + 1, status: 'running' });
+  return handle<DeployResponse>(
+    async () => {
+      guard(req, 'deploy');
+      const { version, status, run } = await startDeploy(name, actorOf(req));
+      after(async () => {
+        await run();
+      });
+      return { version, status };
+    },
+    { status: 202 },
+  );
 }
