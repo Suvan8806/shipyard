@@ -1,10 +1,9 @@
-import { connection } from 'next/server';
-import { AUDIT } from '@/lib/mock/fixtures';
-import type { AuditRow } from '@/lib/contracts/api';
-import { ok } from '../_lib/http';
+import { connection, type NextRequest } from 'next/server';
+import { listAudit } from '@/lib/services/audit';
+import { handle } from '../_lib/http';
 
-// W0 STUB.
-export async function GET() {
+export async function GET(req: NextRequest) {
   await connection();
-  return ok<AuditRow[]>(AUDIT);
+  const limit = Number(req.nextUrl.searchParams.get('limit') ?? 100) || 100;
+  return handle(() => listAudit(limit));
 }

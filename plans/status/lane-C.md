@@ -1,10 +1,18 @@
-# Lane C status
-Updated: 2026-10-24 (initialized by O0 in W0)
-| Task | Status | Commit | Note |
-|------|--------|--------|------|
-| -    | todo   | -      | lane not started |
-REQUESTS:
-- CONTRACT REQUEST: none
-- DEP REQUEST: none
-BLOCKED: none
-READY TO MERGE: no
+# Lane C status (services, REST, MCP, CLI)
+
+| Task | What | Status |
+|---|---|---|
+| C1 | lib/services/* service layer | in progress |
+| C2 | REST routes on services | todo |
+| C3 | deploy route with after() | todo |
+| C4 | hosted MCP (13 tools) | todo |
+| C5 | CLI | todo |
+
+## REQUESTS
+(none yet)
+
+## BLOCKED
+(none)
+
+## READY TO MERGE
+no
