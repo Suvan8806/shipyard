@@ -1,89 +1,149 @@
 'use client';
 import Link from 'next/link';
-import { useState } from 'react';
-import { Activity, Loader2, Zap } from 'lucide-react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { Activity, CircleDashed, Loader2, TriangleAlert, Zap } from 'lucide-react';
 import { toast } from 'sonner';
+import type { RunListItem } from '@/lib/contracts/api';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { getRuns, simulateTraffic } from '../api';
+import { errorMessage, getRuns, simulateTraffic } from '../api';
 import { fmtCost, fmtRelative } from '../format';
+import { EmptyState, ErrorState, Skeleton, StaleNotice } from '../states';
 import { useData, useNow } from '../use-data';
 
-/** Fires N simulated live conversations through the agents (POST /api/admin/simulate). */
+export const RUNS_CHANGED_EVENT = 'shipyard:runs-changed';
+const POLL_MS = 5000;
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+/** Fires N simulated live conversations through the agents (POST /api/admin/simulate, 10-60 s). */
 export function SimulateTrafficButton({ count = 5, onDone }: { count?: number; onDone?: () => void }) {
-  const [busy, setBusy] = useState(false);
+  const [startedAt, setStartedAt] = useState<number | null>(null);
+  const now = useNow(1000, startedAt !== null);
+  const busy = startedAt !== null;
   const run = async () => {
-    setBusy(true);
+    if (busy) return;
+    setStartedAt(Date.now());
     try {
       const r = await simulateTraffic(count);
-      toast.success(`${r.runs} live conversations · ${fmtCost(r.cost_usd)}`, {
-        description: `${r.policy_blocks} policy block${r.policy_blocks === 1 ? '' : 's'} · ${r.approvals} approval${r.approvals === 1 ? '' : 's'} requested`,
-      });
-      onDone?.();
-      window.dispatchEvent(new Event('shipyard:runs-changed'));
+      toast.success(
+        `${plural(r.runs, 'run')} · ${plural(r.policy_blocks, 'policy block')} · ${plural(r.approvals, 'approval')} · ${fmtCost(r.cost_usd)}`,
+        { description: 'Simulated member conversations ran against the live versions.' },
+      );
     } catch (e) {
-      toast.error('Simulation failed', { description: e instanceof Error ? e.message : String(e) });
+      toast.error('Simulation failed', { description: errorMessage(e) });
     } finally {
-      setBusy(false);
+      setStartedAt(null);
+      onDone?.();
+      window.dispatchEvent(new Event(RUNS_CHANGED_EVENT));
     }
   };
+  const secs = startedAt !== null ? Math.max(0, Math.floor((now - startedAt) / 1000)) : 0;
   return (
-    <Button variant="outline" onClick={run} disabled={busy}>
-      {busy ? <Loader2 className="animate-spin" /> : <Zap />}
-      {busy ? 'Simulating…' : 'Simulate traffic'}
+    <Button variant="outline" onClick={run} disabled={busy} aria-live="polite">
+      {busy ? <Loader2 className="animate-spin" aria-hidden /> : <Zap aria-hidden />}
+      {busy ? `Simulating… ${secs}s` : 'Simulate traffic'}
     </Button>
   );
 }
 
-/** Recent runs across all agents, newest first. Polls every 3 s. */
-export function ActivityFeed({ agent, limit = 8, className }: { agent?: string; limit?: number; className?: string }) {
-  const { data, loading } = useData(`runs:${agent ?? '*'}:${limit}`, () => getRuns({ limit, agent }), { pollMs: 3000 });
-  const now = useNow(15000);
+function isInFlight(r: RunListItem): boolean {
+  return r.outcome === null && !r.cost_usd;
+}
+
+function Tag({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <section className={cn('rounded-xl border bg-card', className)} aria-label="Recent activity">
+    <span className={cn('inline-flex items-center gap-1 rounded-sm border px-1.5 py-px text-2xs font-semibold uppercase tracking-wide', className)}>
+      {children}
+    </span>
+  );
+}
+
+function RunRow({ r, now }: { r: RunListItem; now: number }) {
+  const inFlight = isInFlight(r);
+  const preview = r.preview ?? (inFlight ? 'No reply yet' : r.scenario ? null : 'No reply');
+  return (
+    <li>
+      <Link href={`/runs/${r.id}`} className="block px-4 py-2.5 outline-none hover:bg-accent focus-visible:bg-accent">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+          <span className="font-semibold text-foreground">{r.agent}</span>
+          {r.version !== null && <span className="font-mono text-muted-foreground">v{r.version}</span>}
+          <Tag className={r.mode === 'scenario' ? 'border-border bg-muted text-muted-foreground' : 'border-border text-foreground'}>
+            {r.mode === 'scenario' ? 'twin' : 'live'}
+          </Tag>
+          {inFlight && (
+            <Tag className="border-running-border bg-running-subtle text-running">
+              <CircleDashed className="size-3 animate-running-ring" aria-hidden /> running
+            </Tag>
+          )}
+          {r.outcome === 'error' && (
+            <Tag className="border-warn-border bg-warn-subtle text-warn">
+              <TriangleAlert className="size-3" aria-hidden /> error
+            </Tag>
+          )}
+          <span className="ml-auto tabular-nums text-muted-foreground">{fmtRelative(r.started_at, now)}</span>
+        </div>
+        <p className="mt-0.5 line-clamp-1 text-sm text-muted-foreground">
+          {r.scenario && <span className="font-mono text-xs">{r.scenario}</span>}
+          {r.scenario && preview && ' · '}
+          {preview && <span className={cn(!r.preview && 'italic')}>{preview}</span>}
+        </p>
+        {!inFlight && <span className="font-mono text-2xs text-muted-foreground">{fmtCost(r.cost_usd)}</span>}
+      </Link>
+    </li>
+  );
+}
+
+/** Recent runs (all agents, or one), newest first. Polls every 5 s and refetches after a simulation. */
+export function ActivityFeed({ agent, limit = 8, className }: { agent?: string; limit?: number; className?: string }) {
+  const { data, error, loading, refetch } = useData(`runs:${agent ?? '*'}:${limit}`, () => getRuns({ limit, agent }), {
+    pollMs: POLL_MS,
+  });
+  const now = useNow(15000);
+
+  useEffect(() => {
+    const onChange = () => void refetch();
+    window.addEventListener(RUNS_CHANGED_EVENT, onChange);
+    return () => window.removeEventListener(RUNS_CHANGED_EVENT, onChange);
+  }, [refetch]);
+
+  return (
+    <section className={cn('flex min-w-0 flex-col rounded-md border bg-card', className)} aria-label="Recent activity">
       <header className="flex items-center justify-between border-b px-4 py-3">
         <h2 className="flex items-center gap-2 text-sm font-semibold">
           <Activity className="size-4 text-muted-foreground" aria-hidden /> Recent activity
         </h2>
-        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <span className="sy-pulse-dot size-1.5 rounded-full" style={{ background: 'var(--sy-green)' }} aria-hidden />
-          live
-        </span>
+        {data && !error && <span className="text-xs text-muted-foreground">updates every 5s</span>}
       </header>
-      <ul className="divide-y">
-        {loading && !data
-          ? Array.from({ length: 4 }, (_, i) => (
-              <li key={i} className="px-4 py-3">
-                <div className="h-4 w-2/3 animate-pulse rounded bg-muted" />
-              </li>
-            ))
-          : (data ?? []).map((r) => (
-              <li key={r.id} className="sy-row-in">
-                <Link href={`/runs/${r.id}`} className="block px-4 py-2.5 hover:bg-muted/50">
-                  <div className="flex items-center gap-2 text-xs">
-                    <span className="font-medium text-foreground">{r.agent}</span>
-                    {r.version !== null && <span className="text-muted-foreground">v{r.version}</span>}
-                    <span
-                      className={cn(
-                        'rounded-full border px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide',
-                        r.mode === 'scenario' ? 'sy-pill-amber' : 'sy-pill-grey',
-                      )}
-                    >
-                      {r.mode === 'scenario' ? 'twin' : 'live'}
-                    </span>
-                    {r.outcome === 'error' && <span className="sy-text-red font-semibold">error</span>}
-                    <span className="ml-auto tabular-nums text-muted-foreground">{fmtRelative(r.started_at, now)}</span>
-                  </div>
-                  <p className="mt-0.5 line-clamp-1 text-sm text-muted-foreground">
-                    {r.scenario ? <span className="font-mono text-xs">{r.scenario} · </span> : null}
-                    {r.preview ?? '(no reply)'}
-                  </p>
-                  <span className="font-mono text-[11px] text-muted-foreground">{fmtCost(r.cost_usd)}</span>
-                </Link>
-              </li>
-            ))}
-        {data && data.length === 0 && <li className="px-4 py-6 text-center text-sm text-muted-foreground">No runs yet.</li>}
-      </ul>
+      {data && error && (
+        <div className="border-b px-4 py-2">
+          <StaleNotice error={error} onRetry={refetch} />
+        </div>
+      )}
+      {loading && !data ? (
+        <ul className="flex flex-col gap-3 p-4" aria-busy="true" aria-label="Loading activity">
+          {Array.from({ length: 4 }, (_, i) => (
+            <li key={i} className="flex flex-col gap-1.5">
+              <Skeleton className="h-3.5 w-1/2" />
+              <Skeleton className="h-4 w-full" />
+            </li>
+          ))}
+        </ul>
+      ) : error && !data ? (
+        <ErrorState title="Couldn't load recent activity" error={error} onRetry={refetch} className="m-4" />
+      ) : data && data.length === 0 ? (
+        <EmptyState icon={<Activity />} title="No runs yet" className="m-4">
+          {agent
+            ? 'Chat with the live version or deploy to run the gate. Every run shows up here with its trace.'
+            : 'Simulate traffic or chat with an agent. Every run shows up here with its trace.'}
+        </EmptyState>
+      ) : (
+        <ul className="divide-y">
+          {(data ?? []).map((r) => (
+            <RunRow key={r.id} r={r} now={now} />
+          ))}
+        </ul>
+      )}
     </section>
   );
 }

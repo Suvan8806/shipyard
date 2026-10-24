@@ -43,31 +43,35 @@ export function assertionText(a: Assertion): string {
   return t;
 }
 
-export function ScenarioItem({ s, className }: { s: ParsedScenario; className?: string }) {
+export function ScenarioItem({ s, className, as: Tag = 'li' }: { s: ParsedScenario; className?: string; as?: 'li' | 'div' }) {
   return (
-    <li className={cn('rounded-xl border bg-card p-3', className)}>
+    <Tag className={cn('rounded-md border bg-card p-3', className)}>
       <div className="flex items-center gap-2">
         <span className="font-mono text-sm font-medium">{s.name}</span>
         {s.generated && (
-          <span className="inline-flex items-center gap-1 rounded-full border px-1.5 text-[10px] font-semibold uppercase text-[var(--sy-accent)]">
+          <span className="inline-flex items-center gap-1 rounded-sm border bg-muted px-1.5 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
             <Sparkles className="size-3" /> generated
           </span>
         )}
       </div>
       {s.description && <p className="mt-0.5 text-sm text-muted-foreground">{s.description}</p>}
-      {s.conversation[0] && <p className="mt-1.5 rounded-lg bg-muted/50 px-2 py-1 text-sm italic">“{s.conversation[0]}”</p>}
+      {s.conversation[0] && <p className="mt-1.5 rounded-sm bg-muted px-2 py-1 text-sm italic">“{s.conversation[0]}”</p>}
       <ul className="mt-2 flex flex-wrap gap-1.5">
         {s.assert.map((a, i) => (
           <li
             key={i}
-            className={cn('rounded-full border px-2 py-0.5 text-xs', a.critical ? 'sy-pill-red font-medium' : 'text-muted-foreground')}
+            className={cn(
+              'rounded-sm border px-1.5 py-0.5 text-xs',
+              a.critical ? 'border-border bg-muted font-medium text-foreground' : 'text-muted-foreground',
+            )}
             title={a.critical ? 'Critical: blocks the deploy if it fails' : 'Non-critical'}
           >
+            {a.critical && <span className="font-semibold">critical · </span>}
             {assertionText(a)}
           </li>
         ))}
       </ul>
-      {s.error && <p className="sy-text-red mt-1 text-xs">{s.error}</p>}
-    </li>
+      {s.error && <p className="mt-1 text-xs text-warn">Couldn&apos;t read this scenario: {s.error}</p>}
+    </Tag>
   );
 }
