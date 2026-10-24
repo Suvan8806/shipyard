@@ -1,5 +1,29 @@
 # Shipyard PLAN
 
+## ▶ RESUME HERE (session paused 2026-10-24)
+**Live:** https://shipyard-silk-beta.vercel.app (prod = `main`, auto-deploys on push) · **Repo:** https://github.com/Suvan8806/shipyard (public) · Supabase project `oicyziasyqufalmvoulp`
+**Rule:** O0 orchestrates only; subagents write all code. Launch builders with the Agent tool directly (workflow agents can't spawn sub-builders).
+
+**Done and on `main`:** W0 foundation · design direction "inspection tags" + tokens/fonts · lanes A (runtime/tools/policies/generator, Groq) · B (twins/assertions/gate/packs/variants/coverage/replay) · C (REST + hosted MCP) · D (dashboard on mocks) · E (8 agents, 28 scenarios, 5 packs/40 tests, seeded history in Supabase, reset/simulate) · integration fix (node:fs out of client, packs traced, Gemini routing). 47/47 tests, build green, prod serves real DB data.
+
+**First real prod deploy (support-agent v1, 46 tests):** pipeline works end to end; it caught a REAL bug (credit on zero balance → –$25); 16 errors = Groq free TPM 8000 limit; the gate hit the 300s maxDuration → v1 stuck "running" (the sweeper in the gate fix will close it).
+
+**In flight when paused (check `plans/status/lane-B.md` and `lane-D.md` → "STOPPED AT"):**
+- `lane-b`: gate fan-out per scenario (no 300s cap), 429 backoff + model fallback chain, stale sweeper, finalize idempotency.
+- `lane-d`: dashboard real-API default (`NEXT_PUBLIC_USE_MOCKS=1` for mocks), every screen vs real shapes, loading/empty/error states, `NEXT_PUBLIC_API_ORIGIN`.
+
+**Next, in order:**
+1. User upgrades Groq (paid, ~$10). Re-run the burst test (tests 30 parallel calls) to confirm higher limits.
+2. Finish + verify lane-b (deploy collections-agent on a preview) → merge → push.
+3. Finish + verify lane-d → merge → push (prod dashboard on real data).
+4. **Budget cap:** `SHIPYARD_BUDGET_USD=8` hard stop on model calls (sum of runs.cost_usd) + "Budget reached" UI.
+5. Real support-agent deploy on prod → live; then E3 "prove the catch": bad edit → blocked 3/3 (reply PASS / end state FAIL).
+6. Polish wave: Impeccable critique → fix → animate → polish (design agent; see `plans/status/design.md`).
+7. Hardening: `/qa` on prod, `/review`, MCP from Claude Code against prod, admin token, backup video, demo walk ×3, README/Devpost, `/brag-slim`.
+
+**Models now:** careful = `groq/openai/gpt-oss-120b`, fast = `google/gemini-3.5-flash` (Vercel env). Gemini key = free tier (the $50 credit was for Muse, not Gemini).
+**Gotchas:** the laptop's network blocks Postgres ports (test DB paths on Vercel previews; Supabase MCP works over HTTPS) · run `npx next typegen` before `tsc` in fresh worktrees · the Supabase MCP won't DELETE/TRUNCATE without confirmation.
+
 This is the single source of truth for state. The spec is in `PRD.md`, and per-lane instructions are in `plans/`.
 **Only O0 edits this file.** Lanes report in `plans/status/<lane>.md`, and O0 copies status here.
 
