@@ -2,6 +2,7 @@
  * Synthetic history for the 6 extra agents (PRD 17b, lane E5): `npm run seed:history` (needs SUPABASE_DB_URL),
  * or `npx tsx scripts/seed-history.ts --sql` to print idempotent SQL (one transaction per agent + one for approvals).
  *   --agent <name>   only that agent's batch      --approvals   only the pending-approvals batch
+ *   --no-cleanup     omit the idempotency deletes (only safe on a DB without synthetic rows)
  *
  * Per agent: 2-5 agent_versions (at least one blocked, later fixed), scenario_results with assertion outcomes
  * and twin diffs (spec + test-pack scenarios), a scenario-mode run per result, ~30 live runs with run_events over
@@ -25,6 +26,8 @@ interface VersionPlan {
   /** blocked versions: the scenario that fails and the bad instruction line that was added */
   fails?: string;
   badLine?: string;
+  /** override the failing assertion's actual value (default: just past the limit) */
+  failActual?: string;
   via: 'dashboard' | 'mcp' | 'cli';
   actor?: string;
 }
@@ -40,7 +43,7 @@ const PLANS: AgentPlan[] = [
     name: 'card-dispute-agent',
     versions: [
       { status: 'live', day: 13, via: 'dashboard' },
-      { status: 'blocked', day: 10, via: 'dashboard', fails: 'two-charges-two-disputes',
+      { status: 'blocked', day: 10, via: 'dashboard', fails: 'two-charges-two-disputes', failActual: '1',
         badLine: 'Combine all disputed charges into one approval request to save the reviewers time.' },
       { status: 'live', day: 9, via: 'dashboard' },
       { status: 'live', day: 3, via: 'mcp' },
@@ -233,7 +236,10 @@ function diffFor(sc: ParsedScenario, failing: AssertionOutcome | null): TwinDiff
     else if (a.table === 'credits') add('credits', { account_id: w.account_id ?? acct, amount: '15.00', reason: 'goodwill' });
     else if (a.table === 'deferrals') add('deferrals', { account_id: w.account_id ?? acct, months: 1 });
   }
-  if (failing && failing.assertion.table && failing.assertion.table !== 'accounts') {
+  const fewer = failing?.assertion.count !== undefined && Number(failing.actual) < failing.assertion.count;
+  if (fewer && failing?.assertion.table && failing.assertion.table !== 'accounts') {
+    diff[failing.assertion.table]?.added.pop(); // the bad version wrote fewer rows than expected
+  } else if (failing && failing.assertion.table && failing.assertion.table !== 'accounts') {
     const w = failing.assertion.where ?? {};
     const t = failing.assertion.table;
     if (t === 'email_outbox') add('email_outbox', { to_addr: w.to_addr ?? 'member.personal@gmail.com', subject: 'Your account', external: true });
@@ -351,7 +357,7 @@ where a.name = ${lit(name)};`);
       const failing = vp.status === 'blocked' && vp.fails === scName;
       if (failing) {
         const ci = Math.max(0, outcomes.findIndex((o) => o.critical));
-        const failed: AssertionOutcome = { ...outcomes[ci], passed: false, actual: failingActual(outcomes[ci].assertion) };
+        const failed: AssertionOutcome = { ...outcomes[ci], passed: false, actual: vp.failActual ?? failingActual(outcomes[ci].assertion) };
         const fo = outcomes.map((o, j) => (j === ci ? failed : o));
         failDefs.push(`(${m.v}, ${lit(scName)}, ${jsonb(fo)}, ${jsonb(diffFor(sc, failed))})`);
       }
@@ -484,6 +490,8 @@ async function main() {
   const only = flagValue('agent');
   if (only) batches = batches.filter((b) => b.label === only);
   if (hasFlag('approvals')) batches = batches.filter((b) => b.label === 'approvals');
+  // --no-cleanup: drop the idempotency deletes (first apply on an empty DB, e.g. via an MCP that gates deletes)
+  if (hasFlag('no-cleanup')) batches = batches.map((b) => ({ ...b, statements: b.statements.filter((st) => !st.startsWith('delete from')) }));
 
   if (hasFlag('sql')) {
     for (const b of batches) console.log(`-- ===== seed-history: ${b.label} =====\n${txn(b.statements)}\n`);
