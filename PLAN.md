@@ -122,6 +122,7 @@ Status: `todo` · `wip` · `done` · `blocked`. Plan files have the details.
 | T4 | Paraphrase variants (cached) | B | B5 | todo |
 | T5 | Coverage report (tools/policies/tables exercised; untested tools) | B | B5 | todo |
 | T6 | Gate board at scale: group by source, filters, counters, coverage chip; "Generate tests" dialog on the agent page | D | D4 | todo |
+| M1 | After lane-a merges: `google/<id>` routing in resolveModel (@ai-sdk/google installed, key on Vercel); fast = `google/gemini-3.5-flash` (tests, reply judge, variants), careful = `groq/openai/gpt-oss-120b` (live agent, generator); update Vercel SHIPYARD_FAST_MODEL; add Gemini prices to cost.ts | O0→builder | lane-a merged | todo |
 | H6 | (optional) custom domain: buy → `vercel domains add` → DNS → update MCP URL in DEMO.md | O0 | I3 | todo |
 | I1 | Integrate A+C+E: chat on live works on the deployed URL | O0 | A5, C2, E2 | todo |
 | I2 | Integrate B: REST deploy → live/blocked; live DB row counts unchanged | O0 | B5, C3 | todo |
