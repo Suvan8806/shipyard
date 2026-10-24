@@ -4,11 +4,12 @@ import { createTwin, getBase } from '@/lib/twins/twin';
 import { diffSnapshots } from '@/lib/twins/diff';
 import { expandTestPacks, loadPacks } from '@/lib/gate/packs';
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 const bootedAt = Date.now();
 let hits = 0;
 
-export async function GET() {
+export async function GET(req: Request) {
+  const rounds = Math.min(Number(new URL(req.url).searchParams.get("rounds") ?? 1) || 1, 15);
   await connection();
   hits += 1;
   const mb = () => Math.round(process.memoryUsage().rss / 1e6);
@@ -19,13 +20,16 @@ export async function GET() {
     timings.base_ms = Math.round(performance.now() - t);
     timings.rss_after_base = mb();
 
+    const perRound: string[] = [];
+    let diffs: number[] = [];
+    for (let round = 0; round < rounds; round++) {
     t = performance.now();
     const twins = await Promise.all([1, 2, 3, 4].map(() => createTwin()));
     timings.clone4_ms = Math.round(performance.now() - t);
     timings.rss_after_clone4 = mb();
 
     t = performance.now();
-    const diffs = await Promise.all(
+    diffs = await Promise.all(
       twins.map(async (tw) => {
         await tw.seed({
           accounts: [{ id: 'A-100', owner: 'Dana Lee', email: 'dana@lonestarcu.org', balance: 412, monthly_payment: 412 }],
@@ -39,6 +43,9 @@ export async function GET() {
       }),
     );
     timings.work4_ms = Math.round(performance.now() - t);
+    perRound.push(`${timings.clone4_ms}ms/${mb()}MB`);
+    }
+    timings.rounds = perRound.join(' ');
 
     let packs: unknown;
     try {

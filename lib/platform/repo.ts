@@ -336,49 +336,70 @@ export interface ScenarioResultInput {
   diff?: TwinDiff | null;
   before_snapshot?: Snapshot | null;
   after_snapshot?: Snapshot | null;
+  /** Defaults to the naming convention (inferScenarioSource) when omitted. */
+  source?: ScenarioSource;
+  pack?: string | null;
 }
 
 /** Insert or replace by (agent, version, scenario, attempt). */
 export async function upsertScenarioResult(r: ScenarioResultInput): Promise<void> {
+  const inferred = inferScenarioSource(r.scenario);
+  const source = r.source ?? inferred.source;
+  const pack = r.pack ?? (source === 'pack' ? (inferred.pack ?? null) : null);
   await sql`
     insert into scenario_results (agent, version, scenario, attempt, run_id, status, assertions, reply_check,
-                                  final_reply, diff, before_snapshot, after_snapshot)
+                                  final_reply, diff, before_snapshot, after_snapshot, source, pack)
     values (${r.agent}, ${r.version}, ${r.scenario}, ${r.attempt}, ${r.run_id ?? null}, ${r.status},
             ${json(r.assertions ?? [])}, ${json(r.reply_check ?? null)}, ${r.final_reply ?? null},
-            ${json(r.diff ?? null)}, ${json(r.before_snapshot ?? null)}, ${json(r.after_snapshot ?? null)})
+            ${json(r.diff ?? null)}, ${json(r.before_snapshot ?? null)}, ${json(r.after_snapshot ?? null)},
+            ${source}, ${pack})
     on conflict (agent, version, scenario, attempt) do update set
       run_id = excluded.run_id, status = excluded.status, assertions = excluded.assertions,
       reply_check = excluded.reply_check, final_reply = excluded.final_reply, diff = excluded.diff,
       before_snapshot = excluded.before_snapshot, after_snapshot = excluded.after_snapshot,
-      created_at = now()`;
+      source = excluded.source, pack = excluded.pack, created_at = now()`;
 }
 
 export async function listScenarioResults(agent: string, version: number): Promise<ScenarioResultSummary[]> {
   const rows = await sql`
-    select scenario, attempt, status, run_id, assertions, reply_check, final_reply, diff
+    select scenario, attempt, status, run_id, assertions, reply_check, final_reply, diff, source, pack
     from scenario_results where agent = ${agent} and version = ${version}
     order by scenario, attempt`;
-  return rows.map((r) => ({
-    scenario: String(r.scenario),
-    attempt: num(r.attempt),
-    status: r.status as ScenarioStatus,
-    run_id: strOrNull(r.run_id),
-    assertions: (r.assertions as AssertionOutcome[]) ?? [],
-    reply_check: (r.reply_check as ReplyCheck | null) ?? null,
-    final_reply: strOrNull(r.final_reply),
-    diff: (r.diff as TwinDiff | null) ?? null,
-    ...inferScenarioSource(String(r.scenario)),
-  }));
+  return rows.map((r) => {
+    const inferred = inferScenarioSource(String(r.scenario));
+    const source = (r.source as ScenarioSource | null) ?? inferred.source;
+    const pack = strOrNull(r.pack) ?? inferred.pack;
+    return {
+      scenario: String(r.scenario),
+      attempt: num(r.attempt),
+      status: r.status as ScenarioStatus,
+      run_id: strOrNull(r.run_id),
+      assertions: (r.assertions as AssertionOutcome[]) ?? [],
+      reply_check: (r.reply_check as ReplyCheck | null) ?? null,
+      final_reply: strOrNull(r.final_reply),
+      diff: (r.diff as TwinDiff | null) ?? null,
+      source,
+      ...(source === 'pack' && pack ? { pack } : {}),
+    };
+  });
 }
 
-/** Diff + snapshots for a scenario run (RunTrace). Null for live runs. */
-export async function getScenarioResultByRun(
-  runId: string,
-): Promise<{ diff: TwinDiff | null; before_snapshot: Snapshot | null; after_snapshot: Snapshot | null } | null> {
+/** Diff + snapshots (+ source/pack) for a scenario run (RunTrace). Null for live runs. */
+export async function getScenarioResultByRun(runId: string): Promise<{
+  diff: TwinDiff | null;
+  before_snapshot: Snapshot | null;
+  after_snapshot: Snapshot | null;
+  source: ScenarioSource;
+  pack: string | null;
+} | null> {
   const rows = await sql`
-    select diff, before_snapshot, after_snapshot from scenario_results where run_id = ${runId} limit 1`;
+    select scenario, diff, before_snapshot, after_snapshot, source, pack
+    from scenario_results where run_id = ${runId} limit 1`;
   if (!rows[0]) return null;
+  const inferred = inferScenarioSource(String(rows[0].scenario));
   return {
+    source: (rows[0].source as ScenarioSource | null) ?? inferred.source,
+    pack: strOrNull(rows[0].pack) ?? inferred.pack ?? null,
     diff: (rows[0].diff as TwinDiff | null) ?? null,
     before_snapshot: (rows[0].before_snapshot as Snapshot | null) ?? null,
     after_snapshot: (rows[0].after_snapshot as Snapshot | null) ?? null,
