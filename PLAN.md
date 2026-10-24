@@ -26,9 +26,11 @@ This is the single source of truth for state. The spec is in `PRD.md`, and per-l
 ## Sponsor tracks (fill in at the opening ceremony)
 | Track | Qualifies via | Status |
 |---|---|---|
-| NMC2 "Build the Platform Behind the Agent" | the whole product (section 2 of the PRD maps it) | primary |
-| _sponsor TBD_ | e.g. Gemini as the `fast` profile (one env var), or whichever sponsor's API we can swap in | confirm |
-| _sponsor TBD_ | MCP server / Vercel / Supabase if they run tracks | confirm |
+| **NMC2 "Build the Platform Behind the Agent"** (1st AirPods Max Gen 2 · 2nd Apple Watch S12 · 3rd Echo Show 11) | the whole product | **the only track; confirmed** |
+
+**Brief, verbatim:** "Building an AI agent often involves repeating the same setup: connecting tools, configuring models, writing instructions, and adding monitoring. How can a platform make that setup reusable so people can focus on what their agent should accomplish? Design and prototype a platform that lets users quickly create AI agents for enterprise grade use."
+
+**Pitch mapping (say these words on stage):** reusable *tools* (registry + policies) · reusable *models* (profiles, provider swap via env, Groq today) · reusable *instructions* (blocks) · reusable *monitoring* (every run traced with cost) · plus reusable **testing** (test packs: 40 tests from one line) · "quickly create" = 16-line spec or one MCP prompt · "enterprise grade" = end-state deploy gate, approvals, rollback, audit.
 
 Rule: don't add a sponsor API unless it shows up on screen in the demo script.
 
