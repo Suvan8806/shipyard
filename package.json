@@ -17,6 +17,7 @@
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.88",
     "@ai-sdk/gateway": "^4.0.126",
+    "@ai-sdk/google": "^4.0.105",
     "@ai-sdk/groq": "^4.0.70",
     "@base-ui/react": "^1.9.0",
     "@electric-sql/pglite": "^0.5.11",
