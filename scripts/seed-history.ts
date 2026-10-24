@@ -237,7 +237,10 @@ function diffFor(sc: ParsedScenario, failing: AssertionOutcome | null): TwinDiff
     else if (a.table === 'deferrals') add('deferrals', { account_id: w.account_id ?? acct, months: 1 });
   }
   const fewer = failing?.assertion.count !== undefined && Number(failing.actual) < failing.assertion.count;
-  if (fewer && failing?.assertion.table && failing.assertion.table !== 'accounts') {
+  const none = failing?.assertion.count_gte !== undefined && Number(failing.actual) < failing.assertion.count_gte;
+  if (none && failing?.assertion.table) {
+    delete diff[failing.assertion.table]; // the bad version never wrote the expected row
+  } else if (fewer && failing?.assertion.table && failing.assertion.table !== 'accounts') {
     diff[failing.assertion.table]?.added.pop(); // the bad version wrote fewer rows than expected
   } else if (failing && failing.assertion.table && failing.assertion.table !== 'accounts') {
     const w = failing.assertion.where ?? {};
