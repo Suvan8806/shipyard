@@ -83,6 +83,18 @@ export function createRunner(repo: RunnerRepo): RunAgentFn {
       return chain;
     };
 
+    // Tool events are buffered and flushed right after their step's model_call, so traces read
+    // "model decided -> tool ran" in seq order.
+    let pending: RunEventInput[] = [];
+    const logTool = (event: RunEventInput) => {
+      pending.push(event);
+    };
+    const flushTools = () => {
+      const p = pending;
+      pending = [];
+      for (const ev of p) void log(ev);
+    };
+
     const runState = newRunState();
     let toolsRanThisTurn = 0;
 
@@ -98,7 +110,7 @@ export function createRunner(repo: RunnerRepo): RunAgentFn {
           try {
             const decision = await checkPolicy({ tool: name, args, spec, runState, db, runId });
             if (decision.kind === 'block') {
-              void log({ type: 'policy_block', name, payload: { args, reason: decision.reason } });
+              logTool({ type: 'policy_block', name, payload: { args, reason: decision.reason } });
               return { error: decision.reason };
             }
             if (decision.kind === 'approval') {
@@ -107,14 +119,14 @@ export function createRunner(repo: RunnerRepo): RunAgentFn {
                 approval_id: decision.approvalId,
                 message: `${name} was not executed. It is waiting for a human to approve it.`,
               };
-              void log({ type: 'approval', name, payload: { args, approval_id: decision.approvalId } });
+              logTool({ type: 'approval', name, payload: { args, approval_id: decision.approvalId } });
               return result;
             }
             const result = await def.handler({ db, agent: spec.name, runId }, args);
-            void log({ type: 'tool_call', name, payload: { args, result } });
+            logTool({ type: 'tool_call', name, payload: { args, result } });
             return result;
           } catch (e) {
-            void log({ type: 'error', name, payload: { args, error: errMsg(e) } });
+            logTool({ type: 'error', name, payload: { args, error: errMsg(e) } });
             return { error: `tool ${name} failed: ${errMsg(e)}` };
           }
         },
@@ -166,6 +178,7 @@ export function createRunner(repo: RunnerRepo): RunAgentFn {
                   latency_ms: now - last,
                 });
                 last = now;
+                flushTools();
               },
             });
             history.push(...result.responseMessages);
@@ -188,6 +201,7 @@ export function createRunner(repo: RunnerRepo): RunAgentFn {
       void log({ type: 'error', name: 'run', payload: { error: errMsg(e) } });
     }
 
+    flushTools();
     await chain;
     const cost_usd = Math.round(totals.cost * 1e8) / 1e8;
     try {
