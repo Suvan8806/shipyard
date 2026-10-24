@@ -1,7 +1,9 @@
 // The ONLY data-access module for the dashboard. Every screen calls these functions.
-// Mock mode (default until the real API lands): fixtures + a fake 300 ms delay, including a simulated
-// deploy whose gate cards flip over ~8 s. Set NEXT_PUBLIC_USE_MOCKS=0 to hit the REST routes in
-// lib/contracts/api.ts instead. Switching to the real API is a change to this file only.
+// Real mode (default): hits the REST routes in lib/contracts/api.ts on the same origin.
+// NEXT_PUBLIC_API_ORIGIN=https://shipyard-silk-beta.vercel.app makes local dev talk to that deployment through the
+// same-origin dev proxy at /api-proxy/* (app/(dash)/api-proxy/[...path]/route.ts), because the API sends no CORS headers.
+// Mock mode (NEXT_PUBLIC_USE_MOCKS=1, for offline demos): fixtures + a fake 300 ms delay, including a simulated
+// deploy whose gate cards flip over ~8 s.
 import type {
   AgentDetail,
   AgentSummary,
@@ -22,7 +24,11 @@ import type {
 import type { ChatMessage, GateResult } from '@/lib/types';
 import * as mock from './mock';
 
-export const USE_MOCKS = process.env.NEXT_PUBLIC_USE_MOCKS !== '0';
+export const USE_MOCKS = process.env.NEXT_PUBLIC_USE_MOCKS === '1';
+/** Set when local dev should read a remote deployment's API (see the header comment). */
+export const API_ORIGIN = (process.env.NEXT_PUBLIC_API_ORIGIN ?? '').replace(/\/+$/, '');
+const API_PREFIX = API_ORIGIN ? '/api-proxy' : '';
+// request() paths start with /api/..., so the proxy receives /api-proxy/api/... and forwards the full path.
 const MOCK_DELAY_MS = 300;
 
 export class ApiRequestError extends Error {
@@ -48,19 +54,45 @@ async function mocked<T>(fn: () => T, delay = MOCK_DELAY_MS): Promise<T> {
 }
 
 async function request<T>(path: string, init?: { method?: string; body?: unknown }): Promise<T> {
-  const res = await fetch(path, {
-    method: init?.method ?? 'GET',
-    headers: init?.body !== undefined ? { 'content-type': 'application/json' } : undefined,
-    body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
-    cache: 'no-store',
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_PREFIX}${path}`, {
+      method: init?.method ?? 'GET',
+      headers: init?.body !== undefined ? { 'content-type': 'application/json' } : undefined,
+      body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
+      cache: 'no-store',
+    });
+  } catch {
+    throw new ApiRequestError('network', 'Could not reach the Shipyard API. Check your connection and retry.', 0);
+  }
   const text = await res.text();
-  const data: unknown = text ? JSON.parse(text) : null;
+  let data: unknown = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    // Non-JSON body (a platform 502/504 page, a function timeout): report the status, not a parse error.
+    data = null;
+  }
   if (!res.ok) {
     const err = (data as ApiError | null)?.error;
-    throw new ApiRequestError(err?.code ?? 'internal', err?.message ?? `HTTP ${res.status}`, res.status, err?.details);
+    const fallback =
+      res.status === 504 || res.status === 408
+        ? 'The API timed out. Retry in a moment.'
+        : res.status >= 500
+          ? `The API failed (HTTP ${res.status}). Retry in a moment.`
+          : `Request failed (HTTP ${res.status}).`;
+    throw new ApiRequestError(err?.code ?? (res.status >= 500 ? 'internal' : 'bad_request'), err?.message ?? fallback, res.status, err?.details);
+  }
+  if (data === null && text) {
+    throw new ApiRequestError('internal', 'The API returned a response the dashboard could not read.', res.status);
   }
   return data as T;
+}
+
+/** User-facing message for any thrown value. */
+export function errorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  return String(e);
 }
 
 const enc = encodeURIComponent;
