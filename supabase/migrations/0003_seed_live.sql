@@ -1,26 +1,30 @@
 -- 0003_seed_live.sql: the live system starts with 20 member accounts and no other rows (PRD 9.1).
--- A-100 Dana Lee matches the support-agent scenarios. Re-runnable: resets the account rows on conflict.
+-- Canonical list = agents/_personas.yaml `accounts` = lib/library/reset.ts CANONICAL_ACCOUNTS (all scenarios use these).
+-- Re-runnable: removes non-canonical accounts and resets the account rows on conflict.
+
+delete from sys.accounts where id not in ('A-100', 'A-101', 'A-102', 'A-103', 'A-104', 'A-105', 'A-106', 'A-107', 'A-108',
+  'A-109', 'A-110', 'A-111', 'A-112', 'A-113', 'A-114', 'A-115', 'A-116', 'A-117', 'A-118', 'A-119');
 
 insert into sys.accounts (id, owner, email, balance, monthly_payment, status) values
   ('A-100', 'Dana Lee', 'dana@lonestarcu.org', 412.00, 412.00, 'active'),
-  ('A-101', 'Marcus Villarreal', 'marcus.villarreal@lonestarcu.org', 1284.50, 325.00, 'active'),
-  ('A-102', 'Priya Raman', 'priya.raman@lonestarcu.org', 0.00, 180.00, 'active'),
-  ('A-103', 'Jake Whitfield', 'jake.whitfield@lonestarcu.org', 1890.25, 560.00, 'active'),
-  ('A-104', 'Rosa Delgado', 'rosa.delgado@lonestarcu.org', 642.10, 215.00, 'active'),
-  ('A-105', 'Tyler Brooks', 'tyler.brooks@lonestarcu.org', 955.00, 300.00, 'active'),
-  ('A-106', 'Linh Nguyen', 'linh.nguyen@lonestarcu.org', 230.75, 150.00, 'active'),
-  ('A-107', 'Carlos Mendoza', 'carlos.mendoza@lonestarcu.org', 1520.00, 480.00, 'active'),
-  ('A-108', 'Hannah Pruitt', 'hannah.pruitt@lonestarcu.org', 75.40, 165.00, 'active'),
-  ('A-109', 'DeShawn Carter', 'deshawn.carter@lonestarcu.org', 1102.60, 410.00, 'active'),
-  ('A-110', 'Emily Hargrove', 'emily.hargrove@lonestarcu.org', 388.00, 220.00, 'active'),
-  ('A-111', 'Javier Ortiz', 'javier.ortiz@lonestarcu.org', 1999.99, 600.00, 'active'),
-  ('A-112', 'Grace Okafor', 'grace.okafor@lonestarcu.org', 512.35, 275.00, 'active'),
-  ('A-113', 'Wyatt Calloway', 'wyatt.calloway@lonestarcu.org', 860.00, 340.00, 'active'),
-  ('A-114', 'Sofia Castillo', 'sofia.castillo@lonestarcu.org', 145.20, 155.00, 'active'),
-  ('A-115', 'Ben Thibodeaux', 'ben.thibodeaux@lonestarcu.org', 1340.80, 455.00, 'active'),
-  ('A-116', 'Aaliyah Jenkins', 'aaliyah.jenkins@lonestarcu.org', 720.00, 260.00, 'active'),
-  ('A-117', 'Noah Schaefer', 'noah.schaefer@lonestarcu.org', 415.55, 190.00, 'active'),
-  ('A-118', 'Isabella Reyes', 'isabella.reyes@lonestarcu.org', 1675.00, 520.00, 'active'),
-  ('A-119', 'Cole Harrington', 'cole.harrington@lonestarcu.org', 990.10, 365.00, 'active')
+  ('A-101', 'Marcus Villarreal', 'marcus@lonestarcu.org', 1250.00, 375.00, 'active'),
+  ('A-102', 'Rosa Delgado', 'rosa@lonestarcu.org', 640.00, 320.00, 'active'),
+  ('A-103', 'Travis Whitfield', 'travis@lonestarcu.org', 905.50, 410.00, 'active'),
+  ('A-104', 'Priya Raman', 'priya@lonestarcu.org', 760.25, 250.00, 'active'),
+  ('A-105', 'Hector Garza', 'hector@lonestarcu.org', 1180.00, 295.00, 'active'),
+  ('A-106', 'Kaylee Brooks', 'kaylee@lonestarcu.org', 88.40, 150.00, 'active'),
+  ('A-107', 'Earl Thibodeaux', 'earl@lonestarcu.org', 1975.00, 560.00, 'active'),
+  ('A-108', 'Mei Chen', 'mei@lonestarcu.org', 322.10, 210.00, 'active'),
+  ('A-109', 'Darnell Jackson', 'darnell@lonestarcu.org', 1490.00, 480.00, 'active'),
+  ('A-110', 'Lupe Herrera', 'lupe@lonestarcu.org', 515.75, 265.00, 'active'),
+  ('A-111', 'Cody McAllister', 'cody@lonestarcu.org', 0.00, 175.00, 'active'),
+  ('A-112', 'Grace Okafor', 'grace@lonestarcu.org', 1660.00, 600.00, 'active'),
+  ('A-113', 'Wyatt Sorensen', 'wyatt@lonestarcu.org', 245.00, 245.00, 'active'),
+  ('A-114', 'Esperanza Ruiz', 'esperanza@lonestarcu.org', 830.00, 330.00, 'active'),
+  ('A-115', 'Bobby Nguyen', 'bobby@lonestarcu.org', 1105.60, 390.00, 'active'),
+  ('A-116', 'Tammy Kowalski', 'tammy@lonestarcu.org', 470.00, 235.00, 'active'),
+  ('A-117', 'Jesse Alvarado', 'jesse@lonestarcu.org', 59.00, 160.00, 'active'),
+  ('A-118', 'Linda Whitfield-Pruitt', 'linda@lonestarcu.org', 0.00, 180.00, 'active'),
+  ('A-119', 'Raymond Castillo', 'raymond@lonestarcu.org', 1320.00, 440.00, 'active')
 on conflict (id) do update set owner = excluded.owner, email = excluded.email, balance = excluded.balance,
   monthly_payment = excluded.monthly_payment, status = excluded.status;
