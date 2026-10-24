@@ -75,18 +75,18 @@ export function AgentsList() {
       </header>
       {data && <Summary agents={agents} />}
       {error && <p className="sy-pill-red rounded-xl border p-4 text-sm">Could not load agents: {error.message}</p>}
-      <div className="grid gap-6 xl:grid-cols-[1fr_340px]">
-        <div className="min-w-0 overflow-hidden rounded-xl border bg-card">
+      <div className="grid gap-6 2xl:grid-cols-[1fr_340px]">
+        <div className="min-w-0 overflow-x-auto rounded-xl border bg-card">
           {/* Desktop table */}
           <table className="hidden w-full text-sm md:table">
             <thead className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
                 <th className="px-4 py-2.5 font-medium">Agent</th>
-                <th className="px-3 py-2.5 font-medium">Team · owner</th>
+                <th className="px-3 py-2.5 font-medium whitespace-nowrap">Team · owner</th>
                 <th className="px-3 py-2.5 font-medium">Serving</th>
                 <th className="px-3 py-2.5 font-medium">Latest</th>
-                <th className="px-3 py-2.5 text-right font-medium">Pass rate</th>
-                <th className="px-3 py-2.5 text-right font-medium">Avg / run</th>
+                <th className="px-3 py-2.5 text-right font-medium whitespace-nowrap">Pass rate</th>
+                <th className="px-3 py-2.5 text-right font-medium whitespace-nowrap">Avg / run</th>
                 <th className="px-3 py-2.5 text-right font-medium">Updated</th>
                 <th className="px-3 py-2.5" />
               </tr>
@@ -103,7 +103,7 @@ export function AgentsList() {
               {agents.map((a) => (
                 <tr key={a.name} className="group hover:bg-muted/40">
                   <td className="px-4 py-3">
-                    <Link href={`/agents/${a.name}`} className="font-mono font-medium hover:underline">
+                    <Link href={`/agents/${a.name}`} className="font-mono font-medium whitespace-nowrap hover:underline">
                       {a.name}
                     </Link>
                     <div className="line-clamp-1 max-w-xs text-xs text-muted-foreground">{a.goal}</div>

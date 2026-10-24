@@ -80,3 +80,7 @@
 @media (prefers-reduced-motion: reduce) {
   .sy-card[data-settled='true'], .sy-shimmer, .sy-banner-in, .sy-pulse-dot, .sy-row-in { animation: none; }
 }
+
+/* globals.css has a circular --font-sans (shadcn init gotcha); pin Geist here until O0 fixes the token. */
+body:has(.sy-root), .sy-root { font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif; }
+.sy-root .font-mono, .sy-root code, .sy-root pre, .sy-root textarea { font-family: var(--font-geist-mono), ui-monospace, monospace; }

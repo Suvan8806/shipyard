@@ -111,7 +111,7 @@ function Persona() {
 export function Shell({ children }: { children: ReactNode }) {
   const pending = usePendingCount();
   return (
-    <div className="flex min-h-screen w-full flex-col bg-background text-foreground md:flex-row">
+    <div className="sy-root flex min-h-screen w-full flex-col bg-background text-foreground md:flex-row">
       {/* Desktop sidebar */}
       <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col gap-6 border-r bg-muted/20 p-4 md:flex">
         <Wordmark />
