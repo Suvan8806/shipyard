@@ -3,7 +3,6 @@
 // Usage: npx tsx cli/shipyard.ts <validate|deploy|chat|rollback|run|agents> [arg]
 // Env: SHIPYARD_API_URL (default http://localhost:3000), SHIPYARD_ADMIN_TOKEN (optional bearer).
 import { Command } from 'commander';
-import pc from 'picocolors';
 import readline from 'node:readline/promises';
 import type {
   AgentSummary,
@@ -15,6 +14,15 @@ import type {
   ValidateResponse,
 } from '../lib/contracts/api';
 import type { ChatMessage } from '../lib/types';
+
+// Minimal ANSI colors (no dependency). Disabled when NO_COLOR is set or stdout is not a TTY.
+const useColor = !process.env.NO_COLOR && process.stdout.isTTY === true;
+const ansi = (open: number, close: number) => (s: string) => (useColor ? `\x1b[${open}m${s}\x1b[${close}m` : s);
+const pc = {
+  bold: ansi(1, 22), dim: ansi(2, 22),
+  red: ansi(31, 39), green: ansi(32, 39), yellow: ansi(33, 39), magenta: ansi(35, 39), cyan: ansi(36, 39),
+  black: ansi(30, 39), white: ansi(37, 39), bgRed: ansi(41, 49), bgGreen: ansi(42, 49),
+};
 
 const BASE = (process.env.SHIPYARD_API_URL ?? 'http://localhost:3000').replace(/\/$/, '');
 

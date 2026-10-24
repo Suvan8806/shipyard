@@ -1,4 +1,5 @@
-import { BLOCKS, PACKS, POLICIES, PROFILES, listTools } from '../library';
+import { BLOCKS, POLICIES, PROFILES, listTools } from '../library';
+import { PACKS } from '../library/packs-loader';
 import type { LibraryResponse, TestPackSummary } from '../contracts/api';
 
 export function listTestPacks(): TestPackSummary[] {

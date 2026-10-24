@@ -49,10 +49,12 @@ function toPack(raw: unknown, file: string): LoadedPack {
 export function loadPacks(dir = packsDir()): LoadedPack[] {
   if (cache && dir === packsDir()) return cache;
   const files = fs
-    .readdirSync(dir)
+    .readdirSync(/*turbopackIgnore: true*/ dir)
     .filter((f) => /\.ya?ml$/.test(f))
     .sort();
-  const packs = files.map((f) => toPack(parse(fs.readFileSync(path.join(dir, f), 'utf8')), f));
+  // `dir` is dynamic, so tell Turbopack not to trace the whole project; next.config.ts outputFileTracingIncludes
+  // ships lib/library/packs/*.yaml explicitly.
+  const packs = files.map((f) => toPack(parse(fs.readFileSync(path.join(/*turbopackIgnore: true*/ dir, f), 'utf8')), f));
   if (dir === packsDir()) cache = packs;
   return packs;
 }

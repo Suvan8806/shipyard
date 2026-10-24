@@ -3,7 +3,8 @@
 import { after } from 'next/server';
 import { createMcpHandler, getPublicOrigin, withMcpAuth } from 'mcp-handler';
 import { z } from 'zod';
-import { BLOCKS, PACKS, PROFILES, listTools } from '@/lib/library';
+import { BLOCKS, PROFILES, listTools } from '@/lib/library';
+import { PACKS } from '@/lib/library/packs-loader';
 import { getLibrary, listTestPacks } from '@/lib/services/library';
 import { addScenarios, createAgent, listAgents, validateAgent } from '@/lib/services/agents';
 import { getGateResult, rollback, startDeploy } from '@/lib/services/deploy';

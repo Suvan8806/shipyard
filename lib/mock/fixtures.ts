@@ -28,7 +28,7 @@ import type {
   RunListItem,
   RunTrace,
 } from '../contracts/api';
-import { BLOCKS, PACKS, POLICIES, PROFILES, listTools } from '../library';
+import { BLOCKS, POLICIES, PROFILES, listTools } from '../library';
 
 export const ORG = { name: 'Lone Star Community Credit Union', domain: 'lonestarcu.org' } as const;
 export const PERSONA = { name: 'Maya Ortiz', role: 'Platform' } as const;
@@ -817,9 +817,6 @@ export const LIBRARY = {
     { name: 'escalation', description: 'Upset or out-of-scope members get a CRM note and no money movement.', templates: 6 },
   ],
 } satisfies LibraryResponse;
-
-/** Packs as defined in the placeholder library (Lane B replaces). */
-export const PACK_DEFS = PACKS;
 
 /** Example output of POST /api/agents/:name/generate-tests. */
 export const GENERATED_TESTS: Record<string, string> = {

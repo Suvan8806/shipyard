@@ -97,7 +97,7 @@ function Banner({ gate, onRollback }: { gate: GateResult; onRollback: () => void
         </p>
       </div>
       <div className="flex flex-wrap gap-2">
-        <Button variant="outline" render={<Link href={`/agents/${gate.agent}`} />}>
+        <Button variant="outline" nativeButton={false} render={<Link href={`/agents/${gate.agent}`} />}>
           <ArrowLeft /> Back to editor
         </Button>
         <Button variant="outline" onClick={onRollback}>
@@ -151,7 +151,7 @@ function CatchSpotlight({ r }: { r: ScenarioResultSummary }) {
         ))}
         <MiniDiff diff={r.diff} max={6} className="text-sm" />
         {r.run_id && (
-          <Button variant="outline" className="self-start" render={<Link href={`/runs/${r.run_id}`} />}>
+          <Button variant="outline" className="self-start" nativeButton={false} render={<Link href={`/runs/${r.run_id}`} />}>
             Open run trace + twin diff <ArrowUpRight />
           </Button>
         )}

@@ -1,9 +1,7 @@
 // Admin actions: traffic simulation + live reset. Implementations come from Lane E (lib/library/simulate.ts,
-// lib/library/reset.ts). Until they land, ./lane-e-shim provides typed stand-ins with the same names.
-// INTEGRATION: when lane-e merges, change the import below to:
-//   import { simulateTraffic } from '../library/simulate';
-//   import { resetLive } from '../library/reset';
-import { resetLive, simulateTraffic } from './lane-e-shim';
+// lib/library/reset.ts).
+import { simulateTraffic } from '../library/simulate';
+import { resetLive } from '../library/reset';
 import * as repo from '../platform/repo';
 import type { ResetLiveResponse, SimulateResponse } from '../contracts/api';
 

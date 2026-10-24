@@ -4,7 +4,8 @@ import YAML from 'yaml';
 import type { z } from 'zod';
 import type { AgentSpec, Scenario, ValidateSpecFn, ValidationError } from '../types';
 import { SYS_TABLES, isSysColumn, isSysTable, type SysTable } from '../sysdb/schema';
-import { BLOCKS, PACKS, POLICIES, PROFILES, toolNames } from '../library';
+import { BLOCKS, POLICIES, PROFILES, toolNames } from '../library';
+import { PACKS } from '../library/packs-loader';
 import { AgentSpecSchema, ScenarioSchema, type ScenarioIn } from './parse';
 
 const BODY_COLUMN: Partial<Record<SysTable, string>> = { crm_notes: 'body', email_outbox: 'body', approvals: 'details' };

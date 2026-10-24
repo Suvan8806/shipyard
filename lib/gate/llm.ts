@@ -1,15 +1,12 @@
 // Model resolution for the gate's own small LLM calls (reply judge, paraphrase variants).
-// Profile model strings look like 'groq/openai/gpt-oss-20b' (direct Groq) or any gateway id.
+// Uses the shared resolver (lib/runtime/model.ts) so gate and runtime route model strings identically.
 import type { LanguageModel } from 'ai';
-import { groq } from '@ai-sdk/groq';
 import { PROFILES } from '../library';
+import { resolveModel } from '../runtime/model';
 
 export const FAST_DEFAULT = 'groq/openai/gpt-oss-20b';
 
-export function resolveModel(id: string): LanguageModel {
-  if (id.startsWith('groq/')) return groq(id.slice('groq/'.length));
-  return id; // gateway string
-}
+export { resolveModel };
 
 /** The `fast` profile model (or an injected override in tests). */
 export function fastModel(override?: LanguageModel): LanguageModel {
