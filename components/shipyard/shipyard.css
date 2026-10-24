@@ -1,0 +1,82 @@
+/* Lane D semantic colors. Imported once by app/(dash)/layout.tsx. Light + dark (class-based `.dark`). */
+:root {
+  --sy-green: oklch(0.55 0.15 150);
+  --sy-green-bg: oklch(0.96 0.05 150);
+  --sy-green-border: oklch(0.85 0.09 150);
+  --sy-red: oklch(0.53 0.21 27);
+  --sy-red-bg: oklch(0.96 0.03 27);
+  --sy-red-border: oklch(0.82 0.1 27);
+  --sy-amber: oklch(0.58 0.14 70);
+  --sy-amber-bg: oklch(0.97 0.05 85);
+  --sy-amber-border: oklch(0.86 0.1 80);
+  --sy-grey: oklch(0.5 0 0);
+  --sy-grey-bg: oklch(0.96 0 0);
+  --sy-grey-border: oklch(0.88 0 0);
+  --sy-accent: oklch(0.55 0.17 255);
+}
+.dark {
+  --sy-green: oklch(0.78 0.16 150);
+  --sy-green-bg: oklch(0.3 0.06 150 / 0.55);
+  --sy-green-border: oklch(0.45 0.09 150);
+  --sy-red: oklch(0.74 0.17 25);
+  --sy-red-bg: oklch(0.32 0.09 25 / 0.55);
+  --sy-red-border: oklch(0.5 0.14 25);
+  --sy-amber: oklch(0.82 0.14 80);
+  --sy-amber-bg: oklch(0.34 0.07 75 / 0.55);
+  --sy-amber-border: oklch(0.52 0.1 75);
+  --sy-grey: oklch(0.72 0 0);
+  --sy-grey-bg: oklch(0.28 0 0);
+  --sy-grey-border: oklch(0.38 0 0);
+  --sy-accent: oklch(0.72 0.14 255);
+}
+
+.sy-pill-green { color: var(--sy-green); background: var(--sy-green-bg); border-color: var(--sy-green-border); }
+.sy-pill-red { color: var(--sy-red); background: var(--sy-red-bg); border-color: var(--sy-red-border); }
+.sy-pill-amber { color: var(--sy-amber); background: var(--sy-amber-bg); border-color: var(--sy-amber-border); }
+.sy-pill-grey { color: var(--sy-grey); background: var(--sy-grey-bg); border-color: var(--sy-grey-border); }
+
+.sy-text-green { color: var(--sy-green); }
+.sy-text-red { color: var(--sy-red); }
+.sy-text-amber { color: var(--sy-amber); }
+.sy-bg-green { background: var(--sy-green-bg); }
+.sy-bg-red { background: var(--sy-red-bg); }
+.sy-bg-amber { background: var(--sy-amber-bg); }
+.sy-border-green { border-color: var(--sy-green-border); }
+.sy-border-red { border-color: var(--sy-red-border); }
+.sy-border-amber { border-color: var(--sy-amber-border); }
+
+/* Gate card states */
+.sy-card { transition: border-color 400ms ease, box-shadow 400ms ease, background-color 400ms ease; }
+.sy-card[data-status='running'] { border-color: var(--sy-amber-border); }
+.sy-card[data-status='passed'] { border-color: var(--sy-green-border); }
+.sy-card[data-status='failed'],
+.sy-card[data-status='error'] {
+  border-color: var(--sy-red);
+  box-shadow: 0 0 0 1px var(--sy-red), 0 8px 30px -12px var(--sy-red);
+}
+.sy-card[data-settled='true'] { animation: sy-flip 520ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+@keyframes sy-flip {
+  0% { transform: perspective(800px) rotateX(-70deg); opacity: 0.4; }
+  60% { transform: perspective(800px) rotateX(8deg); opacity: 1; }
+  100% { transform: perspective(800px) rotateX(0); }
+}
+.sy-shimmer {
+  background: linear-gradient(90deg, transparent, color-mix(in oklch, var(--sy-amber) 18%, transparent), transparent);
+  background-size: 200% 100%;
+  animation: sy-shimmer 1.4s linear infinite;
+}
+@keyframes sy-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+.sy-banner-in { animation: sy-banner 600ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+@keyframes sy-banner {
+  0% { transform: translateY(-12px) scale(0.98); opacity: 0; }
+  100% { transform: none; opacity: 1; }
+}
+.sy-pulse-dot { animation: sy-pulse 1.6s ease-in-out infinite; }
+@keyframes sy-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+.sy-row-in { animation: sy-row 500ms ease-out; }
+@keyframes sy-row { from { background: var(--sy-amber-bg); } to { background: transparent; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .sy-card[data-settled='true'], .sy-shimmer, .sy-banner-in, .sy-pulse-dot, .sy-row-in { animation: none; }
+}
