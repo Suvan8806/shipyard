@@ -1,15 +1,8 @@
 /*
- * Shipyard design tokens: proposed replacement for app/globals.css
- * ---------------------------------------------------------------
- * Owner: design lane. Applied by the orchestrator (O0), not by Lane D.
- * How to apply: replace the whole of app/globals.css with this file
- * (it keeps every shadcn token name the components in components/ui/** use,
- * and adds Shipyard's status, diff, type and motion tokens).
- * Also apply the app/layout.tsx font change in design/direction.md section 3.
- *
+ * Shipyard design tokens (source of truth: design/tokens.css + design/direction.md).
+ * Owner: design lane. Lanes request token changes; do not add raw status colors.
  * World: "inspection tag". Cool tag-stock ground, Notice-blue ink for the shell
  * and primary actions, ANSI-style safety inks reserved for state only.
- * Every status color here has been contrast-checked (see design/direction.md 4.4).
  */
 
 @import "tailwindcss";
