@@ -88,7 +88,7 @@ function NavLinks({ pending, compact }: { pending: number; compact?: boolean }) 
             <Icon className="size-4 shrink-0" aria-hidden />
             <span className={cn(compact && 'sr-only sm:not-sr-only')}>{label}</span>
             {href === '/approvals' && pending > 0 && (
-              <span className="ml-auto rounded-sm bg-sidebar-primary px-1.5 text-[11px] font-semibold tabular-nums text-sidebar-primary-foreground">
+              <span className="ml-auto rounded-sm bg-sidebar-primary px-1.5 text-2xs font-semibold tabular-nums text-sidebar-primary-foreground">
                 {pending}
               </span>
             )}

@@ -26,7 +26,10 @@ function columnsOf(rows: Row[]): string[] {
 
 function cell(col: string, v: unknown): string {
   if (v === null || v === undefined) return '∅';
-  if (MONEY_COLS.has(col) && typeof v === 'number') return `$${v.toFixed(2)}`;
+  if (MONEY_COLS.has(col)) {
+    const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN;
+    if (Number.isFinite(n)) return `${n < 0 ? '−' : ''}$${Math.abs(n).toFixed(2)}`;
+  }
   if (typeof v === 'object') {
     try {
       return JSON.stringify(v);
@@ -102,6 +105,19 @@ function RowsTable({ rows, cols }: { rows: DiffRow[]; cols: string[] }) {
   );
 }
 
+const KEY_COLS = ['id', 'account_id'];
+
+/**
+ * Columns for a table in the Changes view. A table with only changed rows shows its key columns plus the columns that
+ * changed, changed ones first, so the `before → after` cell is never pushed off the side of a narrow panel.
+ */
+function diffColumns(rows: DiffRow[]): string[] {
+  const all = columnsOf(rows.map((r) => r.row));
+  if (rows.length === 0 || rows.some((r) => r.kind !== 'changed')) return all;
+  const changed = new Set(rows.flatMap((r) => r.changed ?? []));
+  return [...all.filter((c) => KEY_COLS.includes(c) && !changed.has(c)), ...all.filter((c) => changed.has(c))];
+}
+
 function rowKey(r: Row): string {
   return r && 'id' in r ? `id:${String(r.id)}` : JSON.stringify(r);
 }
@@ -148,7 +164,7 @@ function DiffTables({ diff, before }: { diff: TwinDiff; before: Snapshot | null 
                 +{added.length} −{removed.length} ~{changed.length}
               </span>
             </h3>
-            <RowsTable rows={rows} cols={columnsOf(rows.map((r) => r.row))} />
+            <RowsTable rows={rows} cols={diffColumns(rows)} />
           </div>
         );
       })}

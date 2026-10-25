@@ -101,7 +101,8 @@ export interface TagGroup {
   results: ScenarioResultSummary[];
 }
 
-const STATUS_RANK: Record<ScenarioResultSummary['status'], number> = { failed: 0, error: 1, running: 2, passed: 3 };
+// Errors sink below passes: no verdict is less informative than a pass, and they must never bury the one FAIL.
+const STATUS_RANK: Record<ScenarioResultSummary['status'], number> = { failed: 0, running: 1, passed: 2, error: 3 };
 
 export function groupResults(results: ScenarioResultSummary[]): TagGroup[] {
   const sort = (rs: ScenarioResultSummary[]) =>

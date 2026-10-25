@@ -14,9 +14,9 @@ import { StatusPill } from '../status';
 import { useData, useNow } from '../use-data';
 import { GateCard } from './gate-card';
 import { CatchSpotlight, RunningPanel, VerdictBanner } from './gate-banner';
-import { boardResults, countResults, groupResults, tagCodes, verdicts, type GateCounts } from './gate-model';
+import { boardResults, countResults, groupResults, isCriticalFail, tagCodes, verdicts, type GateCounts } from './gate-model';
 
-type Filter = 'all' | 'failed' | 'critical';
+type Filter = 'all' | 'failed' | 'critical' | 'errored';
 /** No tag finished for this long while running: switch to the calm "still running" copy. */
 const STALL_MS = 45_000;
 
@@ -35,6 +35,8 @@ function useLastProgress(done: number | undefined): number {
 
 function CountersStrip({ gate, counts }: { gate: GateResult; counts: GateCounts }) {
   const untested = gate.coverage?.tools_untested ?? null;
+  // Numerals tick (180ms) as results land; keyed on the value so each change plays once. Never on a finished gate.
+  const tick = gate.status === 'running';
   return (
     <div className="flex flex-col gap-2 border-y py-4">
       <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-3">
@@ -56,13 +58,27 @@ function CountersStrip({ gate, counts }: { gate: GateResult; counts: GateCounts 
             </>
           )}
         </p>
-        <p className="flex flex-wrap items-center gap-4 font-mono text-base tabular-nums">
-          <span className="inline-flex items-center gap-1 text-pass" title="passed"><CircleCheck className="size-4" aria-hidden />{counts.passed}<span className="sr-only"> passed</span></span>
-          <span className="inline-flex items-center gap-1 text-fail" title="failed"><OctagonX className="size-4" aria-hidden />{counts.failed}<span className="sr-only"> failed</span></span>
+        <p className="flex flex-wrap items-center gap-x-5 gap-y-1 text-base">
+          <span className="inline-flex items-center gap-1.5 text-pass">
+            <CircleCheck className="size-5" strokeWidth={1.75} aria-hidden />
+            <span key={counts.passed} className={cn('inline-block text-2xl font-bold tabular-nums', tick && 'animate-counter-tick')}>{counts.passed}</span> passed
+          </span>
+          <span className={cn('inline-flex items-center gap-1.5', counts.failed > 0 ? 'text-fail' : 'text-muted-foreground')}>
+            <OctagonX className="size-5" strokeWidth={1.75} aria-hidden />
+            <span key={counts.failed} className={cn('inline-block text-2xl font-bold tabular-nums', tick && 'animate-counter-tick')}>{counts.failed}</span> failed
+          </span>
           {counts.errored > 0 && (
-            <span className="inline-flex items-center gap-1 text-warn" title="infrastructure errors (not failures)"><TriangleAlert className="size-4" aria-hidden />{counts.errored}<span className="sr-only"> errors</span></span>
+            <span className="inline-flex items-center gap-1.5 text-warn" title="Infrastructure errors: the run broke before grading. Not failures.">
+              <TriangleAlert className="size-5" strokeWidth={1.75} aria-hidden />
+              <span key={counts.errored} className={cn('inline-block text-2xl font-bold tabular-nums', tick && 'animate-counter-tick')}>{counts.errored}</span> not graded
+            </span>
           )}
-          <span className="inline-flex items-center gap-1 text-running" title="running"><CircleDashed className="size-4" aria-hidden />{counts.running}<span className="sr-only"> running</span></span>
+          {(counts.running > 0 || gate.status === 'running') && (
+            <span className="inline-flex items-center gap-1.5 text-running">
+              <CircleDashed className="size-5 animate-running-ring" strokeWidth={1.75} aria-hidden />
+              <span key={counts.running} className={cn('inline-block text-2xl font-bold tabular-nums', tick && 'animate-counter-tick')}>{counts.running}</span> running
+            </span>
+          )}
         </p>
       </div>
       {untested && untested.length > 0 && <p className="text-sm text-warn">No test covers {untested.join(', ')}.</p>}
@@ -84,6 +100,9 @@ function CountersStrip({ gate, counts }: { gate: GateResult; counts: GateCounts 
 function Header({ gate, counts, now, onReplay }: { gate: GateResult; counts: GateCounts; now: number; onReplay: () => void }) {
   const running = gate.status === 'running';
   const elapsed = (gate.finished_at ? Date.parse(gate.finished_at) : now) - Date.parse(gate.started_at);
+  // With infrastructure errors in the mix, the stored rate counts them against the agent. Show the rate over graded
+  // tests instead (labelled), so "54%" doesn't misstate an agent that passed 25 of 26 checks it was actually given.
+  const graded = counts.errored > 0 ? counts.passed + counts.failed : 0;
   return (
     <header className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
       <div className="flex flex-col gap-1">
@@ -106,8 +125,16 @@ function Header({ gate, counts, now, onReplay }: { gate: GateResult; counts: Gat
         <div className="flex gap-1.5"><dt className="font-sans text-muted-foreground">{running ? 'Elapsed' : 'Took'}</dt><dd>{fmtDuration(elapsed)}</dd></div>
         <div className="flex gap-1.5"><dt className="font-sans text-muted-foreground">Cost</dt><dd>{fmtCost(gate.total_cost_usd)}</dd></div>
         <div className="flex gap-1.5">
-          <dt className="font-sans text-muted-foreground">{running ? 'Running' : 'Pass rate'}</dt>
-          <dd>{running ? `${counts.done} / ${counts.total}` : gate.pass_rate === null ? `${counts.passed}/${counts.total}` : fmtPct(gate.pass_rate)}</dd>
+          <dt className="font-sans text-muted-foreground">{running ? 'Running' : graded ? 'Pass rate (graded)' : 'Pass rate'}</dt>
+          <dd>
+            {running
+              ? `${counts.done} / ${counts.total}`
+              : graded
+                ? fmtPct(counts.passed / graded)
+                : gate.pass_rate === null
+                  ? `${counts.passed}/${counts.total}`
+                  : fmtPct(gate.pass_rate)}
+          </dd>
         </div>
       </dl>
     </header>
@@ -131,15 +158,27 @@ export function GateBoard({ name, version }: { name: string; version: number }) 
   const groups = useMemo(() => {
     const visible = all.filter((r) =>
       filter === 'failed'
-        ? r.status === 'failed' || r.status === 'error'
-        : filter === 'critical'
+        ? r.status === 'failed'
+        : filter === 'errored'
+          ? r.status === 'error'
+          : filter === 'critical'
           ? r.status === 'failed' && r.assertions.some((a) => !a.passed && a.critical)
           : true,
     );
-    return groupResults(visible);
-  }, [all, filter]);
+    const gs = groupResults(visible);
+    // Once the verdict is in, groups holding a failure move to the top so the catch is in the first viewport.
+    // Never while running: groups would jump around as results land.
+    if (gate?.status === 'running') return gs;
+    const hasFail = (g: (typeof gs)[number]) => (g.results.some((r) => r.status === 'failed') ? 0 : 1);
+    return [...gs].sort((a, b) => hasFail(a) - hasFail(b));
+  }, [all, filter, gate?.status]);
   const lastProgress = useLastProgress(gate ? counts.done : undefined);
-  const catches = all.filter((r) => verdicts(r).disagree);
+  // The spotlight shows the catch: a reply-vs-data disagreement if there is one, else the first critical failure,
+  // else any failure. Only once the verdict is in.
+  const failures = all.filter((r) => r.status === 'failed');
+  const spotlight = running
+    ? undefined
+    : (failures.find((r) => verdicts(r).disagree) ?? failures.find(isCriticalFail) ?? failures[0]);
 
   if (!valid) return <ErrorState title="That isn't a version number." error={new Error(`"${String(version)}" is not a valid version.`)} />;
   if (error && !gate) return <ErrorState title={`Could not load the gate for ${name} v${version}.`} error={error} onRetry={refetch} />;
@@ -152,8 +191,9 @@ export function GateBoard({ name, version }: { name: string; version: number }) 
   };
   const filters: [Filter, string][] = [
     ['all', `All ${counts.total}`],
-    ['failed', `Failed ${counts.failed + counts.errored}`],
+    ['failed', `Failed ${counts.failed}`],
     ['critical', `Critical ${counts.criticalFailed}`],
+    ...(counts.errored > 0 ? ([['errored', `Not graded ${counts.errored}`]] as [Filter, string][]) : []),
   ];
 
   return (
@@ -163,7 +203,7 @@ export function GateBoard({ name, version }: { name: string; version: number }) 
       <StaleNotice error={error} onRetry={refetch} />
       {running && <RunningPanel gate={gate} counts={counts} stalled={stalled} />}
       <CountersStrip gate={gate} counts={counts} />
-      {catches[0] && <CatchSpotlight r={catches[0]} more={catches.length - 1} />}
+      {spotlight && <CatchSpotlight r={spotlight} more={failures.length - 1} />}
 
       <section className="flex flex-col gap-6" aria-label="All tests">
         <div className="sticky top-0 z-10 -mx-1 flex items-center bg-background/95 px-1 py-2 backdrop-blur-[2px] max-lg:top-[88px]">
@@ -195,8 +235,12 @@ export function GateBoard({ name, version }: { name: string; version: number }) 
                 : running
                   ? 'Nothing here yet. Tests are still running.'
                   : filter === 'failed'
-                    ? 'No failures. Every end-state check passed.'
-                    : 'No critical failures.'}
+                    ? counts.errored > 0
+                      ? 'No end-state check failed. Some tests could not be graded; see Not graded.'
+                      : 'No failures. Every end-state check passed.'
+                    : filter === 'errored'
+                      ? 'No infrastructure errors.'
+                      : 'No critical failures.'}
           </p>
         )}
         {groups.map((g) => {
@@ -213,13 +257,13 @@ export function GateBoard({ name, version }: { name: string; version: number }) 
                   {gc.total}
                   {gc.running > 0 && <span>· {gc.running} running</span>}
                   {gc.failed > 0 && (
-                    <span className="inline-flex items-center gap-1 font-semibold text-fail">
-                      · <OctagonX className="size-3.5" aria-hidden /> {gc.failed} failed
+                    <span className="inline-flex items-center gap-1 rounded-sm bg-fail-solid px-1.5 py-0.5 font-sans font-semibold text-fail-solid-foreground">
+                      <OctagonX className="size-3.5" aria-hidden /> {gc.failed} failed
                     </span>
                   )}
                   {gc.errored > 0 && (
-                    <span className="inline-flex items-center gap-1 text-warn">
-                      · <TriangleAlert className="size-3.5" aria-hidden /> {gc.errored} errored
+                    <span className="inline-flex items-center gap-1">
+                      · <TriangleAlert className="size-3.5 text-warn" aria-hidden /> {gc.errored} not graded
                     </span>
                   )}
                 </span>

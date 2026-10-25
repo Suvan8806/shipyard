@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { ArrowLeft, ArrowRight, Loader2, Rocket } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CircleDashed, Loader2, Rocket } from 'lucide-react';
 import type { AgentDetail } from '@/lib/contracts/api';
 import type { ValidationResult } from '@/lib/types';
 import { Button } from '@/components/ui/button';
@@ -87,9 +87,10 @@ export function AgentHeader({
             {running && (
               <Link
                 href={`/agents/${enc}/versions/${running.version}`}
-                className="inline-flex items-center gap-1 rounded-sm border border-running-border bg-running-subtle px-2 py-1 text-sm font-semibold text-running hover:underline"
+                className="inline-flex items-center gap-1.5 rounded-sm px-2 py-1 text-sm font-semibold text-primary hover:underline"
               >
-                Gate running: v{running.version} <ArrowRight className="size-3.5" aria-hidden />
+                <CircleDashed className="size-3.5 animate-running-ring text-running" aria-hidden />
+                Watch v{running.version} gate <ArrowRight className="size-3.5" aria-hidden />
               </Link>
             )}
             <GenerateTestsDialog name={d.name} onAccepted={onScenariosChanged} />

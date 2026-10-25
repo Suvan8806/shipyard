@@ -1,6 +1,6 @@
 # Design lane status
 
-Updated: 2026-10-24 · Branch `design` · Worktree `shipyard-design`
+Updated: 2026-10-24 (W3 polish pass done) · Branch `design` · Worktree `shipyard-design`
 Ran Impeccable `init` (wrote PRODUCT.md) and its direction round (`concept-seed --scope direction --mode operate`, seed:87eba0f94732cf64).
 
 ## Produced
@@ -47,3 +47,23 @@ Run in this order, each with the Impeccable skill, against the deployed or `npm 
 5. **`/impeccable audit`** quick a11y pass (contrast in both themes, live regions, keyboard path: editor → Deploy → gate board → View run).
 6. Spawn **`impeccable-documenter`** to write `DESIGN.md` + `.impeccable/design.json` from the shipped screens.
 7. Projector rehearsal: 1280×720, zoom 110%, read banner/counters/FAILED band from the back of a room.
+
+## W3 polish pass (done, 2026-10-24)
+Critique (dual-agent, snapshot in `.impeccable/critique/`): 24/40 before. Production data (support-agent v1: 25 pass / 1 fail / 20 infra errors) buried the single FAIL under 20 loud ERROR tags; the reply-vs-end-state moment never rendered (reply not graded); collections banner read "BLOCKED. 0 of 20 tests failed"; run trace had no verdict; twin diff clipped the balance cell.
+
+Fixed (components/shipyard/**, app/layout.tsx only; no lib/api changes):
+- Gate board: catch spotlight for any failure (disagreement > critical > first fail) with End state FAIL (solid) beside Reply check (Pass / Fail / Not graded), proof column (expected vs got, mini diff). Failing groups sort first once finished. Errors sort after passes.
+- ERROR tags are now compact dashed "void" tags ("ERROR · not graded", message behind a disclosure): unmistakably not FAIL, same height as a pass.
+- FAILED tag: 24px band word, 28px eyelet, Critical as a filled chip, solid red border, spans 2 columns from lg. End state / Reply check labels sit next to their verdicts.
+- Counters: worded verdict counts at 24px ("25 passed · 1 failed · 20 not graded"); running count only while running; numerals tick while running.
+- Filters: All / Failed (real fails only) / Critical / Not graded. Header: "Pass rate (graded)" when errors exist; durations over an hour as "7h 09m".
+- Blocked banner: 48px BLOCKED, lock in an eyelet ring, sub-line "1 of 46 tests failed on the data · 1 critical · 20 not graded"; zero-fail blocks say "10 of 20 tests couldn't be graded (infrastructure errors) · the gate only ships what it can verify". Banner drops only on a running -> verdict transition.
+- Tag flip: content swaps at the edge-on frame (45% of 420ms); instant under reduced motion.
+- Run trace: verdict strip (End state FAIL / Reply check, failed assertions) from the gate result, Failed pill, sans title with muted pack prefix. Twin diff: changed-only tables show key + changed columns; money as −$25.00 (also in mini diffs).
+- Agents list: metric cards -> one counters strip; row Deploy is an outline button; "Watch gate" in primary blue (status ink no longer used for actions). Agent header likewise.
+- Spec editor stacks below 2xl so YAML lines aren't clipped at 1280/1440. Scenario quotes roman. text-[11px] -> text-2xs.
+- Dark mode now survives reload (next-themes storageKey aligned with the rail toggle's `sy-theme`).
+
+Screenshots: `design/shots/before/*` (production) and `design/shots/after/*` (local dev against the production API), 1440x900 / 1280x720 / 375x812 / full, plus dark gate + run.
+
+Remaining: header Blocked pill duplicates the banner (kept as the version tag); dark-mode diff-cell "before" value is low contrast; "Pass rate (graded) 100%" beside BLOCKED on collections may need a word on stage; tag codes (MS-02) mean little to judges; no "re-run errored tests" action (needs an API).
