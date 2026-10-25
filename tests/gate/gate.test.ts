@@ -87,6 +87,7 @@ vi.mock('@/lib/runtime/runner', () => ({
 
 const { runGate, assertTwinDb, decide } = await import('@/lib/gate/gate');
 const { closeBase } = await import('@/lib/twins/twin');
+const { withReplay, replayEnabled, replayRequested } = await import('@/lib/gate/replay');
 
 afterAll(async () => {
   await closeBase();
@@ -232,6 +233,27 @@ describe('runGate', () => {
     } finally {
       delete process.env.SHIPYARD_DEMO_REPLAY;
     }
+  });
+
+  it('replays per request with withReplay(true) (?replay=1) while SHIPYARD_DEMO_REPLAY is unset', async () => {
+    delete process.env.SHIPYARD_DEMO_REPLAY;
+    await runGate(
+      { agent: 'support-agent', version: 6, spec, scenarios: [secondCredit], specHash: 'h-cache' },
+      { modelOverride: creditScript('done') },
+    );
+    store.versions.push({ agent: 'support-agent', version: 6, spec_hash: 'h-cache', status: 'blocked', pass_rate: 0, total_cost_usd: 0.001 });
+    expect(replayEnabled()).toBe(false);
+    const res = await withReplay(true, () => runGate({ agent: 'support-agent', version: 8, spec, scenarios: [secondCredit], specHash: 'h-cache' }));
+    expect(res.status).toBe('blocked');
+    expect(store.results.get('support-agent|8|second-credit-this-month|1')).toMatchObject({ status: 'failed' });
+    expect(replayEnabled()).toBe(false); // the override does not leak past the call
+  });
+
+  it('reads the replay request flag from ?replay=1 or the x-shipyard-replay header', () => {
+    expect(replayRequested(new Request('https://x.test/api/agents/a/deploy?replay=1'))).toBe(true);
+    expect(replayRequested(new Request('https://x.test/api/agents/a/deploy', { headers: { 'x-shipyard-replay': '1' } }))).toBe(true);
+    expect(replayRequested(new Request('https://x.test/api/agents/a/deploy?replay=0'))).toBe(false);
+    expect(replayRequested(new Request('https://x.test/api/agents/a/deploy'))).toBe(false);
   });
 });
 

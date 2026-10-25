@@ -120,8 +120,15 @@ export function validate(name: string): Promise<ValidateResponse> {
     : request(`/api/agents/${enc(name)}/validate`, { method: 'POST' });
 }
 
+/** Stage safety net: open the dashboard with ?replay=1 and Deploy replays a cached identical-spec gate (no LLM). */
+function replayQuery(): string {
+  if (typeof window === 'undefined') return '';
+  const v = new URLSearchParams(window.location.search).get('replay');
+  return v === '1' || v === 'true' ? '?replay=1' : '';
+}
+
 export function deploy(name: string): Promise<DeployResponse> {
-  return USE_MOCKS ? mocked(() => mock.deploy(name)) : request(`/api/agents/${enc(name)}/deploy`, { method: 'POST' });
+  return USE_MOCKS ? mocked(() => mock.deploy(name)) : request(`/api/agents/${enc(name)}/deploy${replayQuery()}`, { method: 'POST' });
 }
 
 export function getGate(name: string, version: number): Promise<GateResult> {

@@ -2,8 +2,10 @@ import { after } from 'next/server';
 import type { DeployResponse } from '@/lib/contracts/api';
 import { dispatchCtx } from '@/lib/gate/queue';
 import { startDeploy } from '@/lib/services/deploy';
+import { replayRequested } from '@/lib/gate/replay';
 import { actorOf, guard, handle } from '../../../_lib/http';
 
+// POST /api/agents/:name/deploy[?replay=1]
 // after() enqueues the gate and dispatches the first attempts (one serverless invocation per attempt), then returns.
 export const maxDuration = 300;
 
@@ -16,8 +18,10 @@ export async function POST(req: Request, ctx: Ctx) {
       guard(req, 'deploy');
       const { version, status, run } = await startDeploy(name, actorOf(req));
       const dispatch = dispatchCtx(req);
+      // ?replay=1 (or header x-shipyard-replay: 1): stage safety net, replays a cached identical-spec version.
+      const replay = replayRequested(req);
       after(async () => {
-        await run({ ctx: dispatch, wait: false });
+        await run({ ctx: dispatch, wait: false, replay });
       });
       return { version, status };
     },

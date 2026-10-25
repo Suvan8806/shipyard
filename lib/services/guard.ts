@@ -1,5 +1,32 @@
 // Admin token check + in-memory per-IP token-bucket rate limiter (per warm function instance; good enough for a demo).
+import { timingSafeEqual } from 'node:crypto';
 import { ServiceError } from './errors';
+
+function sameSecret(a: string, b: string): boolean {
+  const x = Buffer.from(a);
+  const y = Buffer.from(b);
+  return x.length === y.length && timingSafeEqual(x, y);
+}
+
+/**
+ * Guards the destructive/paid admin routes (POST /api/admin/reset-live, POST /api/admin/simulate) with
+ * SHIPYARD_RESET_TOKEN, sent as `Authorization: Bearer <t>` or `?token=<t>`. Fails closed: when the env var is
+ * unset these routes return 403. Independent of SHIPYARD_ADMIN_TOKEN (chat, deploy and spec edits stay public).
+ */
+export function requireResetToken(req: Request): void {
+  const expected = process.env.SHIPYARD_RESET_TOKEN;
+  if (!expected) throw new ServiceError('forbidden', 'admin routes are disabled (SHIPYARD_RESET_TOKEN is not set)');
+  const header = req.headers.get('authorization') ?? '';
+  const bearer = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
+  let query = '';
+  try {
+    query = new URL(req.url).searchParams.get('token') ?? '';
+  } catch {
+    /* malformed URL: header only */
+  }
+  if ((bearer && sameSecret(bearer, expected)) || (query && sameSecret(query, expected))) return;
+  throw new ServiceError('unauthorized', 'missing or invalid reset token');
+}
 
 /** Throws 401 when SHIPYARD_ADMIN_TOKEN is set and neither `Authorization: Bearer <t>` nor cookie `sy_admin=<t>` matches. */
 export function requireAdmin(req: Request): void {

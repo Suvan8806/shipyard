@@ -5,6 +5,7 @@ import * as repo from '../platform/repo';
 import { mergeScenarios, runGate, tryReplay } from '../gate/gate';
 import { dispatchCtx, enqueueGate, pump, reconcileVersion, type DispatchCtx } from '../gate/queue';
 import { finalizeVersion } from '../gate/verdict';
+import { withReplay } from '../gate/replay';
 import { expandTestPacks } from '../gate/packs';
 import { computeCoverage, scenariosForNames } from '../gate/coverage';
 import type { AgentSpec, GateCoverage, GateResult, ScenarioResultSummary } from '../types';
@@ -26,6 +27,12 @@ export interface RunGateOptions {
   ctx?: DispatchCtx;
   /** Wait (polling + supervising the queue) until the gate is terminal or ~280 s pass. Default true. */
   wait?: boolean;
+  /**
+   * Force the demo replay cache on for this deploy (?replay=1), as if SHIPYARD_DEMO_REPLAY=1: if a finished
+   * version of this agent has the same spec hash, its results are replayed with staggered timing (no LLM calls).
+   * Otherwise the gate runs normally.
+   */
+  replay?: boolean;
 }
 
 export interface StartedDeploy extends DeployResponse {
@@ -88,10 +95,13 @@ export async function startDeploy(name: string, actor = 'api'): Promise<StartedD
 
   const run = async (opts: RunGateOptions = {}): Promise<GateResult | null> => {
     try {
-      if (gateMode() === 'inline') return await runGate({ agent: name, version, spec, scenarios, specHash });
+      const forceReplay = opts.replay === true;
+      if (gateMode() === 'inline') return await withReplay(forceReplay, () => runGate({ agent: name, version, spec, scenarios, specHash }));
       const ctx = opts.ctx ?? dispatchCtx();
       const startedAt = new Date().toISOString();
-      const replay = await tryReplay({ agent: name, version, spec, specHash, startedAt }, mergeScenarios(spec, scenarios));
+      const replay = await withReplay(forceReplay, () =>
+        tryReplay({ agent: name, version, spec, specHash, startedAt }, mergeScenarios(spec, scenarios)),
+      );
       if (replay) return replay;
       const queued = await enqueueGate({ agent: name, version, spec, scenarios });
       if (queued === 0) {
