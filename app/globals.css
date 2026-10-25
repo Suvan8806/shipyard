@@ -1,8 +1,8 @@
 /*
  * Shipyard design tokens (source of truth: design/tokens.css + design/direction.md).
  * Owner: design lane. Lanes request token changes; do not add raw status colors.
- * World: "inspection tag". Cool tag-stock ground, Notice-blue ink for the shell
- * and primary actions, ANSI-style safety inks reserved for state only.
+ * World: "Departures". A split-flap departures board: board-black shell and verdict
+ * boards, concourse-steel ground, signal yellow for wayfinding, lamp colours only for state.
  */
 
 @import "tailwindcss";
@@ -89,42 +89,63 @@
   --color-diff-change-bg: var(--diff-change-bg);
   --color-diff-cell: var(--diff-cell);
 
-  /* ---- type: Archivo (UI, with a width axis) + Geist Mono (code, data) ---- */
-  --font-sans: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
-  --font-heading: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, "SFMono-Regular", Menlo, monospace;
+  /* ---- type: Departures ----
+     board  Sofia Sans Condensed: flap cells, headings, status words
+     ui     Atkinson Hyperlegible Next: everything people read
+     code   Atkinson Hyperlegible Mono: spec, assertions, diffs, money */
+  --font-sans: var(--font-ui), ui-sans-serif, system-ui, sans-serif;
+  --font-heading: var(--font-board), var(--font-ui), ui-sans-serif, sans-serif;
+  --font-display: var(--font-board), ui-sans-serif, sans-serif;
+  --font-mono: var(--font-code), ui-monospace, "SFMono-Regular", Menlo, monospace;
 
-  /* fixed rem scale, ratio ~1.2 (product UI: no fluid type) */
-  --text-2xs: 0.6875rem;  /* 11px  micro labels only (never body) */
+  /* board surfaces (shell rail, verdict boards, flap cells): black in both themes */
+  --color-board: var(--board);
+  --color-board-raised: var(--board-raised);
+  --color-board-cell: var(--board-cell);
+  --color-board-ink: var(--board-ink);
+  --color-board-muted: var(--board-muted);
+  --color-board-rule: var(--board-rule);
+  --color-signal: var(--signal);
+  --color-signal-foreground: var(--signal-foreground);
+  --color-link: var(--link);
+  --color-pass-lamp: var(--pass-lamp);
+  --color-fail-lamp: var(--fail-lamp);
+  --color-running-lamp: var(--running-lamp);
+  --color-warn-lamp: var(--warn-lamp);
+
+  /* fixed rem scale (product UI: no fluid type) */
+  --text-2xs: 0.6875rem;  /* 11px  micro labels only */
   --text-2xs--line-height: 1rem;
   --text-xs: 0.75rem;     /* 12px */
   --text-xs--line-height: 1rem;
-  --text-sm: 0.875rem;    /* 14px  dense table cells, secondary */
+  --text-sm: 0.875rem;    /* 14px  dense rows, secondary */
   --text-sm--line-height: 1.25rem;
   --text-base: 0.9375rem; /* 15px  body */
   --text-base--line-height: 1.5rem;
-  --text-lg: 1.125rem;    /* 18px  card titles */
+  --text-lg: 1.125rem;    /* 18px */
   --text-lg--line-height: 1.625rem;
-  --text-xl: 1.375rem;    /* 22px  status words on tags, section titles */
+  --text-xl: 1.375rem;    /* 22px */
   --text-xl--line-height: 1.75rem;
-  --text-2xl: 1.75rem;    /* 28px  page titles, banner verdict */
+  --text-2xl: 1.75rem;    /* 28px  verdict sentence */
   --text-2xl--line-height: 2.125rem;
-  --text-3xl: 2.25rem;    /* 36px  gate header counters */
+  --text-3xl: 2.25rem;    /* 36px  page titles, counters */
   --text-3xl--line-height: 2.5rem;
-  --text-4xl: 3rem;       /* 48px  projector-mode banner verdict only */
+  --text-4xl: 3rem;       /* 48px */
   --text-4xl--line-height: 3.25rem;
+  --text-5xl: 4rem;       /* 64px  verdict flaps */
+  --text-5xl--line-height: 4.25rem;
 
-  /* ---- radius: tags are crisp, not pillowy ---- */
+  /* ---- radius: board cells and panels are crisp ---- */
   --radius-xs: 2px;
-  --radius-sm: calc(var(--radius) * 0.5);   /* 3px  chips, inputs inner */
-  --radius-md: calc(var(--radius) * 0.75);  /* 4.5px buttons, inputs */
-  --radius-lg: var(--radius);               /* 6px  cards, tags, panels */
-  --radius-xl: calc(var(--radius) * 1.5);   /* 9px  dialogs, sheets */
-  --radius-2xl: calc(var(--radius) * 2);
-  --radius-3xl: calc(var(--radius) * 2.5);
-  --radius-4xl: calc(var(--radius) * 3);
+  --radius-sm: 3px;
+  --radius-md: 4px;
+  --radius-lg: 4px;
+  --radius-xl: 6px;
+  --radius-2xl: 8px;
+  --radius-3xl: 10px;
+  --radius-4xl: 12px;
 
-  /* ---- motion ---- */
+/* ---- motion ---- */
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
   --ease-in-out-quart: cubic-bezier(0.76, 0, 0.24, 1);
@@ -137,103 +158,123 @@
 }
 
 /* ================================================================ */
-/* LIGHT (default; the projector theme)                             */
+/* LIGHT (default; the projector theme): concourse-steel ground,     */
+/* white work surfaces, a board-black shell.                         */
 /* ================================================================ */
 :root {
-  --radius: 0.375rem; /* 6px */
+  --radius: 0.25rem;
 
-  /* tag-stock ground + ink */
-  --background: oklch(0.985 0.003 250);
-  --foreground: oklch(0.21 0.025 255);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.21 0.025 255);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.21 0.025 255);
+  --background: oklch(0.947 0.005 240);
+  --foreground: oklch(0.19 0.01 255);
+  --card: oklch(0.995 0.001 240);
+  --card-foreground: oklch(0.19 0.01 255);
+  --popover: oklch(0.995 0.001 240);
+  --popover-foreground: oklch(0.19 0.01 255);
 
-  /* Notice blue: primary actions, selection, links, focus. Never a status. */
-  --primary: oklch(0.38 0.11 255);
-  --primary-foreground: oklch(0.985 0.003 250);
-  --secondary: oklch(0.955 0.008 250);
-  --secondary-foreground: oklch(0.21 0.025 255);
-  --muted: oklch(0.955 0.008 250);
-  --muted-foreground: oklch(0.48 0.02 255);
-  --accent: oklch(0.94 0.02 250);
-  --accent-foreground: oklch(0.3 0.08 255);
-  --destructive: oklch(0.55 0.2 27);
-  --border: oklch(0.9 0.008 250);
-  --input: oklch(0.86 0.01 250);
-  --ring: oklch(0.55 0.13 255);
+  /* Signal yellow: wayfinding only (current nav, primary action, focus). Never a status. */
+  --signal: oklch(0.87 0.17 95);
+  --signal-foreground: oklch(0.17 0.01 255);
+  /* links on white: the signal's ochre, AA on card and ground */
+  --link: oklch(0.43 0.09 75);
+  --primary: oklch(0.87 0.17 95);
+  --primary-foreground: oklch(0.17 0.01 255);
+  --secondary: oklch(0.925 0.006 240);
+  --secondary-foreground: oklch(0.19 0.01 255);
+  --muted: oklch(0.93 0.005 240);
+  --muted-foreground: oklch(0.44 0.012 250);
+  --accent: oklch(0.915 0.008 240);
+  --accent-foreground: oklch(0.19 0.01 255);
+  --destructive: oklch(0.52 0.2 27);
+  --border: oklch(0.86 0.006 240);
+  --input: oklch(0.78 0.008 240);
+  --ring: oklch(0.19 0.01 255);
 
-  /* charts: blue ramp + one warm, never the status inks */
-  --chart-1: oklch(0.38 0.11 255);
-  --chart-2: oklch(0.55 0.13 245);
-  --chart-3: oklch(0.7 0.09 235);
-  --chart-4: oklch(0.6 0.08 300);
-  --chart-5: oklch(0.82 0.04 250);
+  /* charts: signal + steel, never the status lamps */
+  --chart-1: oklch(0.6 0.13 85);
+  --chart-2: oklch(0.45 0.03 250);
+  --chart-3: oklch(0.68 0.02 240);
+  --chart-4: oklch(0.8 0.012 240);
+  --chart-5: oklch(0.3 0.015 255);
 
-  /* the shell rail: committed Notice-blue field */
-  --sidebar: oklch(0.27 0.06 255);
-  --sidebar-foreground: oklch(0.9 0.015 250);
-  --sidebar-muted: oklch(0.74 0.03 250);
-  --sidebar-primary: oklch(0.985 0.003 250);
-  --sidebar-primary-foreground: oklch(0.27 0.06 255);
-  --sidebar-accent: oklch(0.34 0.07 255);
-  --sidebar-accent-foreground: oklch(0.99 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.72 0.1 250);
+  /* the board: shell rail, verdict boards, flap cells (black in both themes) */
+  --board: oklch(0.185 0.008 255);
+  --board-raised: oklch(0.235 0.009 255);
+  --board-cell: oklch(0.265 0.008 255);
+  --board-cell-low: oklch(0.225 0.008 255);
+  --board-ink: oklch(0.96 0.012 95);
+  --board-muted: oklch(0.74 0.01 250);
+  --board-rule: oklch(1 0 0 / 10%);
+  --board-split: oklch(0.08 0.005 255);
 
-  /* ---- status inks ----
+  --sidebar: var(--board);
+  --sidebar-foreground: var(--board-ink);
+  --sidebar-muted: var(--board-muted);
+  --sidebar-primary: var(--signal);
+  --sidebar-primary-foreground: var(--signal-foreground);
+  --sidebar-accent: var(--board-raised);
+  --sidebar-accent-foreground: var(--board-ink);
+  --sidebar-border: var(--board-rule);
+  --sidebar-ring: var(--signal);
+
+  /* ---- status lamps ----
      X          text + icon on card/background (AA >= 4.5:1)
-     X-solid    filled band / pill
+     X-solid    filled cell / band
      X-solid-foreground  text on the band
      X-subtle   tinted surface behind X text
-     X-border   1px outline of a tinted surface                      */
-  --pass: oklch(0.5 0.11 158);
-  --pass-solid: oklch(0.5 0.11 158);
+     X-border   1px outline of a tinted surface
+     X-lamp     the lit colour on a board-black surface                */
+  --pass: oklch(0.47 0.12 152);
+  --pass-solid: oklch(0.48 0.13 152);
   --pass-solid-foreground: oklch(1 0 0);
-  --pass-subtle: oklch(0.965 0.03 158);
-  --pass-border: oklch(0.85 0.06 158);
+  --pass-subtle: oklch(0.95 0.035 152);
+  --pass-border: oklch(0.8 0.08 152);
+  --pass-lamp: oklch(0.8 0.19 150);
 
-  --fail: oklch(0.52 0.19 27);
-  --fail-solid: oklch(0.52 0.19 27);
+  --fail: oklch(0.52 0.2 27);
+  --fail-solid: oklch(0.53 0.21 27);
   --fail-solid-foreground: oklch(1 0 0);
-  --fail-subtle: oklch(0.965 0.025 27);
-  --fail-border: oklch(0.85 0.07 27);
+  --fail-subtle: oklch(0.955 0.03 27);
+  --fail-border: oklch(0.8 0.1 27);
+  --fail-lamp: oklch(0.7 0.21 28);
 
-  /* blocked: the gate-level lockout. Deeper than fail, always a solid band. */
-  --blocked: oklch(0.45 0.17 25);
-  --blocked-solid: oklch(0.45 0.17 25);
+  /* blocked: the cancelled departure. Deeper than fail, always solid. */
+  --blocked: oklch(0.47 0.19 27);
+  --blocked-solid: oklch(0.47 0.19 27);
   --blocked-solid-foreground: oklch(1 0 0);
-  --blocked-subtle: oklch(0.945 0.035 25);
-  --blocked-border: oklch(0.8 0.09 25);
+  --blocked-subtle: oklch(0.94 0.04 27);
+  --blocked-border: oklch(0.78 0.11 27);
 
-  /* running: "under test" caution yellow. Band is light with dark ink. */
-  --running: oklch(0.5 0.1 70);
-  --running-solid: oklch(0.83 0.14 85);
-  --running-solid-foreground: oklch(0.25 0.05 70);
-  --running-subtle: oklch(0.97 0.035 85);
-  --running-border: oklch(0.86 0.09 85);
+  /* running: boarding. Cyan lamp, distinct from signal yellow and the orange delay lamp. */
+  --running: oklch(0.47 0.09 225);
+  --running-solid: oklch(0.8 0.11 215);
+  --running-solid-foreground: oklch(0.2 0.03 230);
+  --running-subtle: oklch(0.95 0.025 220);
+  --running-border: oklch(0.8 0.07 220);
+  --running-lamp: oklch(0.83 0.13 210);
 
-  /* warn: changed rows, untested tools, gate errors. Never shown inside a running card. */
-  --warn: oklch(0.5 0.12 55);
-  --warn-solid: oklch(0.78 0.13 65);
-  --warn-solid-foreground: oklch(0.24 0.05 55);
-  --warn-subtle: oklch(0.965 0.035 70);
-  --warn-border: oklch(0.86 0.08 65);
+  /* warn: delayed. Changed rows, untested tools, gate errors. */
+  --warn: oklch(0.5 0.14 50);
+  --warn-solid: oklch(0.74 0.16 55);
+  --warn-solid-foreground: oklch(0.2 0.04 50);
+  --warn-subtle: oklch(0.955 0.035 60);
+  --warn-border: oklch(0.82 0.09 60);
+  --warn-lamp: oklch(0.78 0.16 58);
 
-  --draft: oklch(0.48 0.02 255);
-  --draft-subtle: oklch(0.945 0.006 250);
+  --draft: oklch(0.44 0.012 250);
+  --draft-subtle: oklch(0.93 0.005 240);
 
   /* twin diff */
   --diff-add: var(--pass);
-  --diff-add-bg: oklch(0.955 0.04 158);
+  --diff-add-bg: oklch(0.94 0.045 152);
   --diff-remove: var(--fail);
-  --diff-remove-bg: oklch(0.955 0.035 27);
+  --diff-remove-bg: oklch(0.945 0.035 27);
   --diff-change: var(--warn);
-  --diff-change-bg: oklch(0.965 0.035 75);
-  --diff-cell: oklch(0.9 0.09 80); /* the exact changed cell, stronger than the row */
+  --diff-change-bg: oklch(0.955 0.04 70);
+  --diff-cell: oklch(0.88 0.1 85);
 
-  /* motion durations (zeroed under reduced motion below) */
+  --shadow-panel: 0 1px 0 oklch(0.19 0.01 255 / 4%), 0 8px 24px -16px oklch(0.19 0.01 255 / 22%);
+  --shadow-board: 0 2px 0 oklch(0 0 0 / 10%), 0 18px 40px -22px oklch(0.15 0.01 255 / 55%);
+
   --dur-fast: 150ms;
   --dur-base: 200ms;
   --dur-flip: 420ms;
@@ -241,85 +282,94 @@
 }
 
 /* ================================================================ */
-/* DARK                                                             */
+/* DARK: the concourse at night. The ground drops to board black.   */
 /* ================================================================ */
 .dark {
-  --background: oklch(0.17 0.015 255);
-  --foreground: oklch(0.95 0.008 250);
-  --card: oklch(0.21 0.018 255);
-  --card-foreground: oklch(0.95 0.008 250);
-  --popover: oklch(0.23 0.02 255);
-  --popover-foreground: oklch(0.95 0.008 250);
+  --background: oklch(0.155 0.006 255);
+  --foreground: oklch(0.95 0.008 95);
+  --card: oklch(0.2 0.008 255);
+  --card-foreground: oklch(0.95 0.008 95);
+  --popover: oklch(0.22 0.009 255);
+  --popover-foreground: oklch(0.95 0.008 95);
 
-  --primary: oklch(0.78 0.1 250);
-  --primary-foreground: oklch(0.2 0.03 255);
-  --secondary: oklch(0.26 0.02 255);
-  --secondary-foreground: oklch(0.95 0.008 250);
-  --muted: oklch(0.26 0.02 255);
-  --muted-foreground: oklch(0.72 0.02 250);
-  --accent: oklch(0.3 0.04 255);
-  --accent-foreground: oklch(0.95 0.008 250);
-  --destructive: oklch(0.7 0.18 25);
+  --signal: oklch(0.87 0.17 95);
+  --signal-foreground: oklch(0.17 0.01 255);
+  --link: oklch(0.88 0.15 95);
+  --primary: oklch(0.87 0.17 95);
+  --primary-foreground: oklch(0.17 0.01 255);
+  --secondary: oklch(0.25 0.008 255);
+  --secondary-foreground: oklch(0.95 0.008 95);
+  --muted: oklch(0.24 0.008 255);
+  --muted-foreground: oklch(0.74 0.01 250);
+  --accent: oklch(0.27 0.01 255);
+  --accent-foreground: oklch(0.95 0.008 95);
+  --destructive: oklch(0.7 0.19 27);
   --border: oklch(1 0 0 / 11%);
-  --input: oklch(1 0 0 / 16%);
-  --ring: oklch(0.7 0.1 250);
+  --input: oklch(1 0 0 / 20%);
+  --ring: oklch(0.87 0.17 95);
 
-  --chart-1: oklch(0.78 0.1 250);
-  --chart-2: oklch(0.65 0.12 245);
-  --chart-3: oklch(0.52 0.1 240);
-  --chart-4: oklch(0.7 0.09 300);
-  --chart-5: oklch(0.4 0.04 255);
+  --chart-1: oklch(0.87 0.17 95);
+  --chart-2: oklch(0.7 0.02 250);
+  --chart-3: oklch(0.52 0.015 250);
+  --chart-4: oklch(0.38 0.01 255);
+  --chart-5: oklch(0.92 0.01 95);
 
-  --sidebar: oklch(0.13 0.02 255);
-  --sidebar-foreground: oklch(0.9 0.015 250);
-  --sidebar-muted: oklch(0.68 0.025 250);
-  --sidebar-primary: oklch(0.78 0.1 250);
-  --sidebar-primary-foreground: oklch(0.15 0.03 255);
-  --sidebar-accent: oklch(0.22 0.035 255);
-  --sidebar-accent-foreground: oklch(0.98 0 0);
-  --sidebar-border: oklch(1 0 0 / 8%);
-  --sidebar-ring: oklch(0.7 0.1 250);
+  --board: oklch(0.12 0.005 255);
+  --board-raised: oklch(0.19 0.007 255);
+  --board-cell: oklch(0.24 0.008 255);
+  --board-cell-low: oklch(0.2 0.007 255);
+  --board-ink: oklch(0.96 0.012 95);
+  --board-muted: oklch(0.74 0.01 250);
+  --board-rule: oklch(1 0 0 / 9%);
+  --board-split: oklch(0.06 0.004 255);
 
-  --pass: oklch(0.76 0.13 160);
-  --pass-solid: oklch(0.76 0.13 160);
-  --pass-solid-foreground: oklch(0.18 0.03 160);
-  --pass-subtle: oklch(0.26 0.04 160);
-  --pass-border: oklch(0.42 0.07 160);
+  --pass: oklch(0.8 0.17 152);
+  --pass-solid: oklch(0.72 0.17 152);
+  --pass-solid-foreground: oklch(0.16 0.03 152);
+  --pass-subtle: oklch(0.25 0.045 152);
+  --pass-border: oklch(0.42 0.08 152);
+  --pass-lamp: oklch(0.8 0.19 150);
 
-  --fail: oklch(0.72 0.17 25);
-  --fail-solid: oklch(0.6 0.19 25);
+  --fail: oklch(0.72 0.19 27);
+  --fail-solid: oklch(0.58 0.21 27);
   --fail-solid-foreground: oklch(1 0 0);
-  --fail-subtle: oklch(0.27 0.06 25);
-  --fail-border: oklch(0.45 0.11 25);
+  --fail-subtle: oklch(0.26 0.06 27);
+  --fail-border: oklch(0.45 0.12 27);
+  --fail-lamp: oklch(0.7 0.21 28);
 
-  --blocked: oklch(0.74 0.15 25);
-  --blocked-solid: oklch(0.5 0.18 25);
+  --blocked: oklch(0.74 0.17 27);
+  --blocked-solid: oklch(0.5 0.19 27);
   --blocked-solid-foreground: oklch(1 0 0);
-  --blocked-subtle: oklch(0.25 0.06 25);
-  --blocked-border: oklch(0.45 0.12 25);
+  --blocked-subtle: oklch(0.25 0.06 27);
+  --blocked-border: oklch(0.45 0.13 27);
 
-  --running: oklch(0.82 0.14 80);
-  --running-solid: oklch(0.82 0.14 80);
-  --running-solid-foreground: oklch(0.2 0.04 80);
-  --running-subtle: oklch(0.27 0.05 80);
-  --running-border: oklch(0.45 0.08 80);
+  --running: oklch(0.83 0.12 210);
+  --running-solid: oklch(0.8 0.11 215);
+  --running-solid-foreground: oklch(0.18 0.03 230);
+  --running-subtle: oklch(0.25 0.04 220);
+  --running-border: oklch(0.42 0.07 220);
+  --running-lamp: oklch(0.83 0.13 210);
 
-  --warn: oklch(0.8 0.13 65);
-  --warn-solid: oklch(0.78 0.13 65);
-  --warn-solid-foreground: oklch(0.2 0.04 60);
-  --warn-subtle: oklch(0.27 0.05 65);
-  --warn-border: oklch(0.45 0.08 65);
+  --warn: oklch(0.8 0.15 58);
+  --warn-solid: oklch(0.74 0.16 55);
+  --warn-solid-foreground: oklch(0.18 0.04 50);
+  --warn-subtle: oklch(0.26 0.05 58);
+  --warn-border: oklch(0.45 0.09 58);
+  --warn-lamp: oklch(0.78 0.16 58);
 
-  --draft: oklch(0.72 0.02 250);
-  --draft-subtle: oklch(0.26 0.015 255);
+  --draft: oklch(0.74 0.01 250);
+  --draft-subtle: oklch(0.24 0.008 255);
 
   --diff-add: var(--pass);
-  --diff-add-bg: oklch(0.27 0.05 160);
+  --diff-add-bg: oklch(0.26 0.055 152);
   --diff-remove: var(--fail);
-  --diff-remove-bg: oklch(0.27 0.06 25);
+  --diff-remove-bg: oklch(0.27 0.065 27);
   --diff-change: var(--warn);
   --diff-change-bg: oklch(0.27 0.05 70);
-  --diff-cell: oklch(0.4 0.09 75);
+  --diff-cell: oklch(0.42 0.1 80);
+
+  --shadow-panel: 0 1px 0 oklch(0 0 0 / 30%), 0 10px 28px -18px oklch(0 0 0 / 70%);
+  --shadow-board: 0 2px 0 oklch(0 0 0 / 40%), 0 18px 40px -22px oklch(0 0 0 / 80%);
 }
 
 /* ================================================================ */
@@ -429,35 +479,148 @@
 /* SHIPYARD UTILITIES                                               */
 /* ================================================================ */
 
-/* Condensed caps for status words: the tag-header voice.
-   Archivo's width axis; load next/font with axes: ["wdth"]. */
+/* Condensed board caps for status words and verdicts. */
 @utility status-word {
-  font-family: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
-  font-stretch: 78%;
-  font-weight: 750;
-  letter-spacing: 0.04em;
+  font-family: var(--font-board), ui-sans-serif, sans-serif;
+  font-weight: 800;
+  letter-spacing: 0.035em;
   text-transform: uppercase;
   line-height: 1;
 }
 
-/* Small uppercase field labels on tags ("Reply check", "End state"). */
+/* Board headings: condensed, heavy, tight. */
+@utility board-title {
+  font-family: var(--font-board), ui-sans-serif, sans-serif;
+  font-weight: 800;
+  letter-spacing: 0.005em;
+  line-height: 1;
+  text-wrap: balance;
+}
+
+/* Small uppercase column labels, like a departures board's header row. */
 @utility field-label {
-  font-size: var(--text-xs);
-  line-height: var(--text-xs--line-height);
-  font-weight: 600;
-  letter-spacing: 0.06em;
+  font-family: var(--font-board), ui-sans-serif, sans-serif;
+  font-size: 0.8125rem;
+  line-height: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--muted-foreground);
 }
 
-/* Running band sheen (pair with animate-running-sheen). */
+/* A white work surface on the concourse ground. */
+@utility panel {
+  background-color: var(--card);
+  color: var(--card-foreground);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-panel);
+}
+
+/* A board-black surface (verdict boards, the shell). */
+@utility board {
+  background-color: var(--board);
+  color: var(--board-ink);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-board);
+}
+
+/* Running row sheen (pair with animate-running-sheen). */
 @utility running-sheen {
   background-image: linear-gradient(
     100deg,
     transparent 30%,
-    color-mix(in oklch, var(--running-solid) 55%, white) 50%,
+    color-mix(in oklch, var(--running-solid) 35%, transparent) 50%,
     transparent 70%
   );
   background-size: 60% 100%;
   background-repeat: no-repeat;
+}
+
+/* ================================================================ */
+/* SPLIT-FLAP CELLS (the signature)                                 */
+/* ================================================================ */
+.flap {
+  display: inline-flex;
+  gap: 0.07em;
+  font-family: var(--font-board), ui-sans-serif, sans-serif;
+  font-weight: 800;
+  line-height: 1;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+.flap-cell {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  min-width: 0.68em;
+  height: 1.22em;
+  padding: 0 0.07em;
+  border-radius: 0.09em;
+  color: var(--flap-ink, var(--board-ink));
+  /* two leaves: the top flap catches a little more light than the bottom */
+  background: linear-gradient(to bottom, var(--board-cell) 0 50%, var(--board-cell-low) 50% 100%);
+  box-shadow: inset 0 1px 0 oklch(1 0 0 / 7%), 0 1px 0 oklch(0 0 0 / 35%);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+}
+.flap-cell::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  top: calc(50% - 0.5px);
+  height: max(1px, 0.035em);
+  background: var(--board-split);
+  opacity: 0.85;
+}
+.flap-cell[data-space="true"] { min-width: 0.34em; background: transparent; box-shadow: none; }
+.flap-cell[data-space="true"]::after { display: none; }
+.flap-cell > span { display: block; transform-origin: 50% 50%; }
+.flap-cell[data-ticking="true"] > span { animation: flap-fall 70ms linear both; }
+@keyframes flap-fall {
+  from { transform: scaleY(0.2); opacity: 0.5; }
+  to { transform: scaleY(1); opacity: 1; }
+}
+.flap[data-tone="pass"] { --flap-ink: var(--pass-lamp); }
+.flap[data-tone="fail"] { --flap-ink: var(--fail-lamp); }
+.flap[data-tone="blocked"] { --flap-ink: var(--fail-lamp); }
+.flap[data-tone="running"] { --flap-ink: var(--running-lamp); }
+.flap[data-tone="warn"] { --flap-ink: var(--warn-lamp); }
+.flap[data-tone="signal"] { --flap-ink: var(--signal); }
+.flap[data-tone="muted"] { --flap-ink: var(--board-muted); }
+
+/* A lamp: the small lit dot beside a status word. */
+.lamp {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: 0 0 0 2px color-mix(in oklch, currentColor 24%, transparent);
+}
+.lamp[data-blink="true"] { animation: lamp-blink 1.2s steps(2, jump-none) infinite; }
+@keyframes lamp-blink { 50% { opacity: 0.25; } }
+
+/* A row that just arrived on the board: a brief signal wash that clears. */
+@keyframes row-arrive {
+  from { background-color: color-mix(in oklch, var(--signal) 26%, transparent); }
+  to { background-color: transparent; }
+}
+.row-arrive { animation: row-arrive 1.4s var(--ease-out-quart) both; }
+
+/* The verdict board landing: drops into place, then its lamp rule sweeps across. */
+@keyframes board-land {
+  from { transform: translateY(-10px); opacity: 0.001; }
+  to { transform: none; opacity: 1; }
+}
+@keyframes rule-sweep {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+.board-land { animation: board-land 520ms var(--ease-out-expo) both; }
+.rule-sweep { transform-origin: left; animation: rule-sweep 900ms 250ms var(--ease-out-expo) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .flap-cell > span, .lamp[data-blink="true"], .row-arrive, .board-land, .rule-sweep { animation: none !important; }
 }

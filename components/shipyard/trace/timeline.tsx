@@ -1,6 +1,6 @@
 'use client';
-// Run timeline (design/direction.md 7.2): a vertical line with a 24px station mark per event, content to the right,
-// latency + cost right-aligned in mono so they scan as a column. Payloads are untrusted shapes: render defensively.
+// Run timeline (design/direction.md 7.2): a departures-style list of rows, one per event, each with a type chip,
+// a latency bar whose length is the step's exact duration, and tokens + cost right-aligned in mono. Payloads are untrusted shapes: render defensively.
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { Circle, MessageSquareText, ShieldX, TriangleAlert, UserCheck, Wrench } from 'lucide-react';
@@ -37,14 +37,15 @@ const WRITES: Record<string, string> = {
   'approval.request': 'approvals',
 };
 
-const MARKS: Record<string, { Icon: typeof Wrench; mark: string; label: string }> = {
-  model_call: { Icon: MessageSquareText, mark: 'bg-card border-border text-muted-foreground', label: 'Model' },
-  tool_call: { Icon: Wrench, mark: 'bg-accent border-primary text-primary', label: 'Tool' },
-  policy_block: { Icon: ShieldX, mark: 'bg-fail-solid border-fail-solid text-fail-solid-foreground', label: 'Policy block' },
-  approval: { Icon: UserCheck, mark: 'bg-running-solid border-running-solid text-running-solid-foreground', label: 'Approval' },
-  error: { Icon: TriangleAlert, mark: 'bg-warn-solid border-warn-solid text-warn-solid-foreground', label: 'Error' },
+/** Event type chips: policy blocks and errors read loudly (solid), the rest stay quiet. */
+const MARKS: Record<string, { Icon: typeof Wrench; mark: string; label: string; bar: string }> = {
+  model_call: { Icon: MessageSquareText, mark: 'border-border bg-card text-muted-foreground', label: 'Model', bar: 'bg-chart-2' },
+  tool_call: { Icon: Wrench, mark: 'border-foreground/25 bg-card text-foreground', label: 'Tool', bar: 'bg-chart-1' },
+  policy_block: { Icon: ShieldX, mark: 'border-fail-solid bg-fail-solid text-fail-solid-foreground', label: 'Policy block', bar: 'bg-fail-solid' },
+  approval: { Icon: UserCheck, mark: 'border-running-border bg-running-subtle text-running', label: 'Approval', bar: 'bg-chart-1' },
+  error: { Icon: TriangleAlert, mark: 'border-warn-solid bg-warn-solid text-warn-solid-foreground', label: 'Error', bar: 'bg-warn-solid' },
 };
-const UNKNOWN_MARK = { Icon: Circle, mark: 'bg-card border-border text-muted-foreground', label: 'Event' };
+const UNKNOWN_MARK = { Icon: Circle, mark: 'border-border bg-card text-muted-foreground', label: 'Event', bar: 'bg-chart-2' };
 
 function fmtOffset(ts: string, startedAt: string): string {
   const ms = Date.parse(ts) - Date.parse(startedAt);
@@ -55,15 +56,14 @@ function fmtOffset(ts: string, startedAt: string): string {
 function Meta({ e }: { e: RunEvent }) {
   const parts: string[] = [];
   if (e.tokens_in !== null || e.tokens_out !== null) parts.push(`${e.tokens_in ?? 0} in / ${e.tokens_out ?? 0} out`);
-  if (e.latency_ms !== null) parts.push(`${e.latency_ms.toLocaleString()} ms`);
   if (e.cost_usd !== null) parts.push(fmtCost(e.cost_usd));
   if (parts.length === 0) return null;
-  return <span className="font-mono text-xs text-muted-foreground tabular-nums sm:ml-auto sm:text-right">{parts.join(' · ')}</span>;
+  return <span className="font-mono text-xs break-words text-muted-foreground tabular-nums sm:ml-auto sm:text-right">{parts.join(' · ')}</span>;
 }
 
 function Chip({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <span className={cn('inline-flex items-center rounded-sm bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground', className)}>
+    <span className={cn('inline-flex max-w-full items-center rounded-[3px] border bg-muted px-1.5 py-0.5 font-mono text-xs break-all text-foreground', className)}>
       {children}
     </span>
   );
@@ -82,7 +82,7 @@ function ModelBody({ p }: { p: Payload }) {
           ))}
         </div>
       )}
-      {text && <p className="max-w-[70ch] rounded-md border bg-card px-3 py-2 text-sm whitespace-pre-wrap">{text}</p>}
+      {text && <p className="max-w-[70ch] rounded-[4px] border bg-muted/40 px-3 py-2 text-sm break-words whitespace-pre-wrap">{text}</p>}
       {!text && calls.length === 0 && typeof p.finish_reason === 'string' && (
         <p className="text-sm text-muted-foreground">Finished: {p.finish_reason}</p>
       )}
@@ -114,7 +114,7 @@ function EventBody({ e, p }: { e: RunEvent; p: Payload | null }) {
           {id !== undefined && id !== null && (
             <>
               {' '}
-              <Link href="/approvals" className="font-mono text-primary hover:underline">
+              <Link href="/approvals" className="rounded-sm font-mono text-link underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
                 #{String(id)}
               </Link>
             </>
@@ -143,28 +143,49 @@ function EventBody({ e, p }: { e: RunEvent; p: Payload | null }) {
   return raw === null || raw === undefined ? null : <JsonBlock label="Payload" value={raw} preview />;
 }
 
-function EventItem({ e, startedAt }: { e: RunEvent; startedAt: string }) {
+function LatencyBar({ ms, max, bar }: { ms: number | null; max: number; bar: string }) {
+  if (ms === null) return null;
+  const pct = max > 0 ? Math.max(1.5, (ms / max) * 100) : 0;
+  return (
+    <div className="flex items-center gap-3" title={`${ms.toLocaleString()} ms`}>
+      <div className="h-1.5 min-w-0 flex-1 rounded-[2px] bg-muted" aria-hidden>
+        <div className={cn('h-1.5 rounded-[2px]', bar)} style={{ width: `${pct}%` }} />
+      </div>
+      <span className="w-20 shrink-0 text-right font-mono text-xs font-semibold tabular-nums">{ms.toLocaleString()} ms</span>
+    </div>
+  );
+}
+
+function EventItem({ e, startedAt, maxLatency }: { e: RunEvent; startedAt: string; maxLatency: number }) {
   const s = MARKS[e.type] ?? { ...UNKNOWN_MARK, label: String(e.type || 'Event') };
   const p = asObject(e.payload);
   const writes = e.type === 'tool_call' && e.name ? WRITES[e.name] : undefined;
   const model = e.type === 'model_call' ? (typeof p?.model === 'string' ? p.model : e.name) : null;
   const title = e.type === 'model_call' ? model : e.name === 'run' || e.name === 'rate_limit' ? null : e.name;
+  const loud = e.type === 'policy_block' || e.type === 'error';
 
   return (
-    <li className="relative flex gap-3 pb-5 last:pb-0">
-      <span className={cn('z-10 mt-0.5 grid size-6 shrink-0 place-items-center rounded-full border', s.mark)}>
-        <s.Icon className="size-3.5" strokeWidth={2} aria-hidden />
-      </span>
-      <div
-        className={cn(
-          'flex min-w-0 flex-1 flex-col gap-2',
-          e.type === 'policy_block' && 'rounded-md border border-fail-border bg-fail-subtle p-3',
-        )}
-      >
-        <div className="flex flex-col gap-0.5 sm:flex-row sm:flex-wrap sm:items-baseline sm:gap-x-2">
-          <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
-            <span className="w-14 shrink-0 font-mono text-xs text-muted-foreground tabular-nums">{fmtOffset(e.ts, startedAt)}</span>
-            <span className="field-label">{s.label}</span>
+    <li
+      className={cn(
+        'flex min-w-0 flex-col gap-2.5 px-4 py-3.5 sm:grid sm:grid-cols-[4.25rem_minmax(0,1fr)] sm:gap-x-4',
+        e.type === 'policy_block' && 'bg-fail-subtle',
+        e.type === 'error' && 'bg-warn-subtle',
+      )}
+    >
+      <span className="pt-1 font-mono text-xs text-muted-foreground tabular-nums">{fmtOffset(e.ts, startedAt)}</span>
+      <div className="flex min-w-0 flex-col gap-2.5">
+        <div className="flex flex-col gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            <span
+              className={cn(
+                'status-word inline-flex shrink-0 items-center gap-1 rounded-[3px] border px-1.5 py-1',
+                loud ? 'text-[0.8125rem]' : 'text-xs',
+                s.mark,
+              )}
+            >
+              <s.Icon className="size-3.5" strokeWidth={2.25} aria-hidden />
+              {s.label}
+            </span>
             {title && (
               <span className={cn('min-w-0 font-mono text-sm break-all', e.type === 'model_call' ? 'text-muted-foreground' : 'font-semibold')}>
                 {title}
@@ -175,18 +196,21 @@ function EventItem({ e, startedAt }: { e: RunEvent; startedAt: string }) {
           </div>
           <Meta e={e} />
         </div>
+        <LatencyBar ms={e.latency_ms} max={maxLatency} bar={s.bar} />
         <EventBody e={e} p={p} />
       </div>
     </li>
   );
 }
 
+/** Each row carries a latency bar: length is exact duration, relative to the slowest step in the run. */
 export function Timeline({ events, startedAt }: { events: RunEvent[]; startedAt: string }) {
   const sorted = [...events].sort((a, b) => a.seq - b.seq);
+  const maxLatency = sorted.reduce((m, e) => Math.max(m, e.latency_ms ?? 0), 0);
   return (
-    <ol className="relative before:absolute before:top-3 before:bottom-3 before:left-[11px] before:w-0.5 before:bg-border">
+    <ol className="panel min-w-0 divide-y overflow-hidden">
       {sorted.map((e) => (
-        <EventItem key={e.seq} e={e} startedAt={startedAt} />
+        <EventItem key={e.seq} e={e} startedAt={startedAt} maxLatency={maxLatency} />
       ))}
     </ol>
   );

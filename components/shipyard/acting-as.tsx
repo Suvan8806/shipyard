@@ -32,7 +32,7 @@ function roleLabel(u: Identity): string {
   if (u.is_guest) return 'demo, all teams';
   if (u.is_admin) return 'admin';
   const entries = Object.entries(u.memberships);
-  return entries.length ? entries.map(([t, r]) => `${r} · ${t}`).join(', ') : 'no team';
+  return entries.length ? entries.map(([t, r]) => `${Array.isArray(r) ? r.join('+') : r} · ${t}`).join(', ') : 'no team';
 }
 
 export function ActingAs() {

@@ -28,17 +28,17 @@ export function JsonBlock({
 }) {
   const oneLine = preview ? toJson(value) : '';
   return (
-    <details className={cn('group min-w-0 rounded-md border bg-muted/60', className)} open={defaultOpen}>
-      <summary className="flex cursor-pointer list-none items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
+    <details className={cn('group min-w-0 rounded-[4px] border bg-muted/50', className)} open={defaultOpen}>
+      <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-[4px] px-2.5 py-1.5 text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
         <ChevronRight className="size-3 shrink-0 transition-transform group-open:rotate-90" strokeWidth={2} aria-hidden />
-        <span className="shrink-0">{label}</span>
+        <span className="shrink-0 font-semibold tracking-[0.06em] uppercase">{label}</span>
         {preview && (
           <span className="min-w-0 truncate font-mono font-normal group-open:hidden" title={oneLine}>
             {oneLine}
           </span>
         )}
       </summary>
-      <pre className="max-h-96 overflow-auto border-t px-3 py-2 font-mono text-[13px] leading-relaxed whitespace-pre-wrap break-words">
+      <pre className="max-h-96 overflow-auto border-t bg-card px-3 py-2 font-mono text-[13px] leading-relaxed whitespace-pre-wrap break-words">
         {toJson(value, 2)}
       </pre>
     </details>

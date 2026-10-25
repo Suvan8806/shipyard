@@ -29,12 +29,22 @@ export async function setTeamBudget(id: string, budget: number | null): Promise<
   return rows[0] ? toTeam(rows[0]) : null;
 }
 
+function toMemberships(rows: readonly Record<string, unknown>[]): Record<string, Role | Role[]> {
+  const out: Record<string, Role | Role[]> = {};
+  for (const m of rows) {
+    const team = String(m.team_id);
+    const role = m.role as Role;
+    const prev = out[team];
+    out[team] = prev === undefined ? role : [...(Array.isArray(prev) ? prev : [prev]), role];
+  }
+  return out;
+}
+
 export async function getUser(id: string): Promise<Identity | null> {
   const rows = await sql`select * from users where id = ${id}`;
   if (!rows[0]) return null;
   const ms = await sql`select team_id, role from memberships where user_id = ${id}`;
-  const memberships: Record<string, Role> = {};
-  for (const m of ms) memberships[String(m.team_id)] = m.role as Role;
+  const memberships = toMemberships(ms);
   return { id: String(rows[0].id), name: String(rows[0].name), is_admin: Boolean(rows[0].is_admin), memberships };
 }
 
@@ -42,8 +52,7 @@ export async function listUsers(): Promise<Identity[]> {
   const users = await sql`select * from users order by is_admin, id`;
   const ms = await sql`select user_id, team_id, role from memberships`;
   return users.map((u) => {
-    const memberships: Record<string, Role> = {};
-    for (const m of ms) if (m.user_id === u.id) memberships[String(m.team_id)] = m.role as Role;
+    const memberships = toMemberships(ms.filter((m) => m.user_id === u.id));
     return { id: String(u.id), name: String(u.name), is_admin: Boolean(u.is_admin), memberships };
   });
 }

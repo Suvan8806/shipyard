@@ -8,16 +8,14 @@ import { getTeams, type TeamSummary } from '../api';
 import { fmtCost } from '../format';
 import { EmptyState, ErrorState, StaleNotice, TableSkeleton } from '../states';
 import { useData } from '../use-data';
+import { Flap } from '../flap';
 
 const POLL_MS = 15_000;
 
 function BudgetBadge({ state }: { state: TeamSummary['budget_state'] }) {
-  if (state === 'reached') {
-    return <span className="rounded-sm bg-fail-solid px-1.5 py-0.5 text-xs font-semibold text-fail-solid-foreground">Budget reached</span>;
-  }
-  if (state === 'warning') {
-    return <span className="rounded-sm border border-warn-border bg-warn-subtle px-1.5 py-0.5 text-xs font-semibold text-warn">Over 80%</span>;
-  }
+  if (state === 'reached') return <Flap text="BUDGET REACHED" tone="fail" className="text-sm" label="Budget reached" />;
+  if (state === 'warning') return <Flap text="OVER 80%" tone="warn" className="text-sm" label="Over 80% of budget" />;
+  if (state === 'ok') return <Flap text="OK" tone="pass" className="text-sm" label="Within budget" />;
   return null;
 }
 
@@ -41,8 +39,11 @@ export function TeamsView() {
   const { data, error, refetch } = useData('teams', getTeams, { pollMs: POLL_MS });
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
-      <header className="flex flex-col gap-1">
-        <h1 className="text-2xl font-bold tracking-tight">Teams</h1>
+      <header className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="board-title text-3xl sm:text-4xl">Teams</h1>
+          {data && <Flap text={String(data.length)} tone="signal" className="text-[1.6rem]" label={`${data.length} teams`} />}
+        </div>
         <p className="max-w-[70ch] text-muted-foreground">
           Every agent belongs to one team. Model spend this month (live chats and test runs) counts against the team&apos;s budget; at 100% that
           team&apos;s model calls are refused and other teams keep working.
@@ -55,7 +56,7 @@ export function TeamsView() {
             Apply the enterprise migration to create teams.
           </EmptyState>
         ) : (
-          <div className="overflow-x-auto rounded-md border bg-card">
+          <div className="panel overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="border-b bg-muted/60 text-left">
                 <tr>
@@ -71,7 +72,7 @@ export function TeamsView() {
                 {data.map((t) => (
                   <tr key={t.id}>
                     <td className="px-4 py-2.5">
-                      <div className="font-medium">{t.name}</div>
+                      <div className="font-semibold">{t.name}</div>
                       <div className="font-mono text-xs text-muted-foreground">{t.id}</div>
                     </td>
                     <td className="px-3 py-2.5 text-right tabular-nums">

@@ -66,7 +66,7 @@ export function Eyelet({ children, className }: { children: ReactNode; className
 export function PageTitle({ name, title, children }: { name: string; title: string; children?: ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <h1 className="flex flex-wrap items-center gap-x-3 gap-y-1 text-2xl font-bold tracking-tight text-balance">
+      <h1 className="board-title flex flex-wrap items-center gap-x-3 gap-y-1 text-3xl sm:text-4xl">
         <FlaskConical className="size-6 text-muted-foreground" strokeWidth={1.75} aria-hidden />
         <span>{title}</span>
         <span className="font-mono text-lg font-semibold text-muted-foreground break-all">{name}</span>

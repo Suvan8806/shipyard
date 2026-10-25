@@ -2,16 +2,18 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, type ReactNode } from 'react';
-import { ArrowRight, Bot, Loader2 } from 'lucide-react';
+import { ArrowRight, Bot, Loader2, Lock } from 'lucide-react';
 import type { AgentSummary } from '@/lib/contracts/api';
 import { Button } from '@/components/ui/button';
 import { getAgent, getAgents, getGate } from '../api';
 import { fmtCost, fmtPct, fmtRelative } from '../format';
 import { EmptyState, ErrorState, StaleNotice, TableSkeleton } from '../states';
 import { StatusPill } from '../status';
+import { Flap } from '../flap';
 import { useData, useNow } from '../use-data';
 import { ActivityFeed, SimulateTrafficButton } from '../activity/activity';
 import { useDeploy } from './use-deploy';
+import { HowItWorksGuide } from '../onboarding';
 
 const POLL_MS = 5000;
 /** The agent the stage demo opens (agents/DEMO.md). */
@@ -27,7 +29,7 @@ function RowAction({ a }: { a: AgentSummary }) {
       <Link
         href={gateHref(a, runningVersion)}
         onClick={(e) => e.stopPropagation()}
-        className="inline-flex items-center gap-1 text-sm font-semibold whitespace-nowrap text-primary hover:underline"
+        className="inline-flex items-center gap-1 rounded-sm text-sm font-semibold whitespace-nowrap text-link underline-offset-4 hover:underline"
       >
         Watch gate <ArrowRight className="size-3.5" aria-hidden />
       </Link>
@@ -72,10 +74,22 @@ function latestNote(a: AgentSummary): string | null {
  * Serving state first ("Live v3"); the newest attempt second when it differs ("latest v4 blocked").
  * With nothing serving, the newest attempt's status is the primary pill.
  */
+function NoteMark({ status }: { status: AgentSummary['latest_status'] }) {
+  if (status === 'running') return <span className="lamp text-running" data-blink="true" aria-hidden />;
+  if (status === 'blocked') return <Lock className="size-3.5 shrink-0" strokeWidth={2.5} aria-hidden />;
+  return null;
+}
+
+function noteCls(status: AgentSummary['latest_status']): string {
+  if (status === 'blocked') return 'font-semibold text-fail';
+  if (status === 'running') return 'font-semibold text-running';
+  return 'text-muted-foreground';
+}
+
 function ServingStatus({ a, linkLatest = true }: { a: AgentSummary; linkLatest?: boolean }) {
   const note = a.current_version !== null ? latestNote(a) : null;
   return (
-    <div className="flex flex-col items-start gap-0.5">
+    <div className="flex flex-col items-start gap-1">
       {a.current_version !== null ? (
         <StatusPill status="live" label={`Live v${a.current_version}`} />
       ) : (
@@ -87,12 +101,16 @@ function ServingStatus({ a, linkLatest = true }: { a: AgentSummary; linkLatest?:
             href={gateHref(a, a.latest_version)}
             onClick={(e) => e.stopPropagation()}
             tabIndex={-1}
-            className={`text-xs whitespace-nowrap hover:underline ${a.latest_status === 'blocked' ? 'text-fail' : 'text-muted-foreground hover:text-foreground'}`}
+            className={`inline-flex items-center gap-1.5 text-xs whitespace-nowrap hover:underline ${noteCls(a.latest_status)}`}
           >
+            <NoteMark status={a.latest_status} />
             {note}
           </Link>
         ) : (
-          <span className={`text-xs whitespace-nowrap ${a.latest_status === 'blocked' ? 'text-fail' : 'text-muted-foreground'}`}>{note}</span>
+          <span className={`inline-flex items-center gap-1.5 text-xs whitespace-nowrap ${noteCls(a.latest_status)}`}>
+            <NoteMark status={a.latest_status} />
+            {note}
+          </span>
         )
       )}
     </div>
@@ -104,19 +122,24 @@ function CounterStrip({ agents }: { agents: AgentSummary[] }) {
   const blocked = agents.filter((a) => a.latest_status === 'blocked').length;
   const running = agents.filter((a) => a.latest_status === 'running').length;
   const runs = agents.reduce((s, a) => s + a.runs_24h, 0);
-  const items: { label: string; value: string; cls?: string }[] = [
-    { label: 'serving', value: `${serving}/${agents.length}` },
-    { label: running === 1 ? 'gate running' : 'gates running', value: String(running), cls: running > 0 ? 'text-running' : undefined },
-    { label: blocked === 1 ? 'deploy blocked' : 'deploys blocked', value: String(blocked), cls: blocked > 0 ? 'text-fail' : undefined },
-    { label: 'live runs in 24h', value: runs.toLocaleString() },
+  const items: { label: string; value: string; tone: 'pass' | 'running' | 'fail' | 'muted' | 'ink' }[] = [
+    { label: 'serving', value: `${serving}/${agents.length}`, tone: serving > 0 ? 'pass' : 'muted' },
+    { label: running === 1 ? 'gate running' : 'gates running', value: String(running), tone: running > 0 ? 'running' : 'muted' },
+    { label: blocked === 1 ? 'deploy blocked' : 'deploys blocked', value: String(blocked), tone: blocked > 0 ? 'fail' : 'muted' },
+    { label: 'live runs in 24h', value: runs.toLocaleString(), tone: 'ink' },
   ];
-  // One counters strip, same pattern as the gate board: numerals carry the weight, no metric cards.
+  // The fleet board: one board-black strip, flap numerals in lamp tones, labels beneath like a departures header.
   return (
-    <dl className="flex flex-wrap items-baseline gap-x-6 gap-y-2 border-y py-3">
-      {items.map((i) => (
-        <div key={i.label} className="flex items-baseline gap-2">
-          <dt className="order-last text-sm text-muted-foreground">{i.label}</dt>
-          <dd className={`text-2xl font-bold tabular-nums ${i.cls ?? ''}`}>{i.value}</dd>
+    <dl className="board grid grid-cols-2 overflow-hidden sm:grid-cols-4">
+      {items.map((i, idx) => (
+        <div
+          key={i.label}
+          className={`flex flex-col gap-2.5 px-4 py-4 sm:px-6 sm:py-5 ${idx % 2 === 1 ? 'border-l border-board-rule' : ''} ${idx >= 2 ? 'border-t border-board-rule sm:border-t-0' : ''} ${idx === 2 ? 'sm:border-l' : ''}`}
+        >
+          <dt className="order-last field-label text-board-muted">{i.label}</dt>
+          <dd>
+            <Flap text={i.value} tone={i.tone} label={`${i.value} ${i.label}`} className="text-3xl sm:text-4xl" />
+          </dd>
         </div>
       ))}
     </dl>
@@ -128,47 +151,59 @@ function AgentRow({ a, now }: { a: AgentSummary; now: number }) {
   const open = () => router.push(agentHref(a));
   // The whole row is a mouse target; keyboard users get one tab stop per row (the name link) plus the row action.
   return (
-    <tr onClick={open} className="cursor-pointer hover:bg-accent focus-within:bg-accent">
-      <td className="px-4 py-2.5">
-        <Link href={agentHref(a)} onClick={(e) => e.stopPropagation()} className="font-mono font-semibold whitespace-nowrap hover:underline">
+    <tr onClick={open} className="cursor-pointer transition-colors hover:bg-muted/60 focus-within:bg-muted/60">
+      <td className="py-3 pr-3 pl-5">
+        <Link href={agentHref(a)} onClick={(e) => e.stopPropagation()} className="rounded-sm font-mono text-base font-bold whitespace-nowrap hover:underline">
           {a.name}
         </Link>
-        <div className="text-xs text-muted-foreground">{a.team ?? 'No team'}{a.owner ? ` · ${a.owner}` : ''}</div>
+        <div className="mt-0.5 text-sm text-muted-foreground">{a.team ?? 'No team'}{a.owner ? ` · ${a.owner}` : ''}</div>
       </td>
-      <td className="px-3 py-2.5">
-        <span className={a.current_version === null ? 'text-muted-foreground' : 'font-mono font-semibold'}>
-          {a.current_version === null ? 'none' : `v${a.current_version}`}
-        </span>
+      <td className="px-3 py-3">
+        <VersionFlap a={a} />
       </td>
-      <td className="px-3 py-2.5">
+      <td className="px-3 py-3">
         <ServingStatus a={a} />
       </td>
-      <td className="px-3 py-2.5 text-right font-mono tabular-nums">{fmtPct(a.pass_rate)}</td>
-      <td className="px-3 py-2.5 text-right font-mono tabular-nums">{fmtCost(a.avg_cost_usd)}</td>
-      <td className="px-3 py-2.5 text-right font-mono tabular-nums">{a.runs_24h.toLocaleString()}</td>
-      <td className="px-3 py-2.5 text-right text-xs whitespace-nowrap text-muted-foreground">{fmtRelative(a.updated_at, now)}</td>
-      <td className="px-3 py-2.5 text-right">
+      <td className="px-3 py-3 text-right font-mono text-[0.9375rem] tabular-nums">{fmtPct(a.pass_rate)}</td>
+      <td className="px-3 py-3 text-right font-mono text-[0.9375rem] tabular-nums">{fmtCost(a.avg_cost_usd)}</td>
+      <td className="px-3 py-3 text-right font-mono text-[0.9375rem] tabular-nums">{a.runs_24h.toLocaleString()}</td>
+      <td className="px-3 py-3 text-right text-sm whitespace-nowrap text-muted-foreground">{fmtRelative(a.updated_at, now)}</td>
+      <td className="py-3 pr-5 pl-3 text-right">
         <RowAction a={a} />
       </td>
     </tr>
   );
 }
 
+function VersionFlap({ a, className = 'text-xl' }: { a: AgentSummary; className?: string }) {
+  return a.current_version === null ? (
+    <Flap text="none" tone="muted" label="No live version" className={className} />
+  ) : (
+    <Flap text={`v${a.current_version}`} tone="signal" label={`Live version v${a.current_version}`} className={className} />
+  );
+}
+
 function AgentCard({ a }: { a: AgentSummary }) {
   return (
-    <li className="flex flex-col gap-1.5 p-4">
-      <div className="flex items-center justify-between gap-2">
-        <Link href={agentHref(a)} className="truncate font-mono font-semibold hover:underline">
-          {a.name}
-        </Link>
-        <ServingStatus a={a} linkLatest={false} />
+    <li className="flex flex-col gap-3 px-4 py-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <Link href={agentHref(a)} className="block truncate rounded-sm font-mono text-base font-bold hover:underline">
+            {a.name}
+          </Link>
+          <div className="truncate text-sm text-muted-foreground">
+            {a.team ?? 'No team'}
+            {a.owner ? ` · ${a.owner}` : ''}
+          </div>
+        </div>
+        <VersionFlap a={a} />
       </div>
-      <div className="text-xs text-muted-foreground">{a.team ?? 'No team'}</div>
-      <div className="flex items-center justify-between gap-2 font-mono text-xs">
-        <span>
-          {fmtPct(a.pass_rate)} pass · {fmtCost(a.avg_cost_usd)}/run
-        </span>
+      <div className="flex items-end justify-between gap-3">
+        <ServingStatus a={a} linkLatest={false} />
         <RowAction a={a} />
+      </div>
+      <div className="font-mono text-xs text-muted-foreground tabular-nums">
+        {fmtPct(a.pass_rate)} pass · {fmtCost(a.avg_cost_usd)}/run · {a.runs_24h.toLocaleString()} runs 24h
       </div>
     </li>
   );
@@ -176,18 +211,19 @@ function AgentCard({ a }: { a: AgentSummary }) {
 
 function AgentsTable({ agents, now }: { agents: AgentSummary[]; now: number }) {
   return (
-    <div className="min-w-0 overflow-x-auto rounded-md border bg-card">
-      <table className="hidden w-full text-sm md:table">
-        <thead className="border-b bg-muted text-left">
+    <div className="panel min-w-0 overflow-hidden">
+      <div className="hidden overflow-x-auto md:block">
+      <table className="w-full text-sm">
+        <thead className="border-b-2 border-foreground/80 text-left">
           <tr>
-            <th className="field-label px-4 py-2.5">Agent</th>
+            <th className="field-label py-2.5 pr-3 pl-5">Agent</th>
             <th className="field-label px-3 py-2.5 whitespace-nowrap">Live version</th>
             <th className="field-label px-3 py-2.5">Status</th>
             <th className="field-label px-3 py-2.5 text-right whitespace-nowrap">Pass rate</th>
             <th className="field-label px-3 py-2.5 text-right whitespace-nowrap">Avg / run</th>
             <th className="field-label px-3 py-2.5 text-right whitespace-nowrap">Runs 24h</th>
             <th className="field-label px-3 py-2.5 text-right">Updated</th>
-            <th className="px-3 py-2.5">
+            <th className="py-2.5 pr-5 pl-3">
               <span className="sr-only">Actions</span>
             </th>
           </tr>
@@ -198,6 +234,7 @@ function AgentsTable({ agents, now }: { agents: AgentSummary[]; now: number }) {
           ))}
         </tbody>
       </table>
+      </div>
       <ul className="divide-y md:hidden">
         {agents.map((a) => (
           <AgentCard key={a.name} a={a} />
@@ -249,19 +286,20 @@ export function AgentsList() {
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-bold tracking-tight text-balance">
-            Agents {data && <span className="font-mono font-semibold text-muted-foreground tabular-nums">{data.length}</span>}
+        <div className="flex flex-col gap-2">
+          <h1 className="board-title flex items-baseline gap-3 text-3xl sm:text-4xl">
+            Agents {data && <span className="font-mono text-2xl font-semibold text-muted-foreground tabular-nums sm:text-3xl">{data.length}</span>}
           </h1>
-          <p className="text-sm text-muted-foreground">
+          <p className="max-w-2xl text-base text-pretty text-muted-foreground">
             Every change is tested on throwaway twin databases before it reaches members. Create agents from any MCP client.
           </p>
         </div>
         <SimulateTrafficButton onDone={() => void refetch()} />
       </header>
+      <HowItWorksGuide />
       {data && data.length > 0 && <CounterStrip agents={data} />}
       {data && <StaleNotice error={error} onRetry={refetch} />}
-      <div className="grid gap-6 2xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="grid gap-6 2xl:grid-cols-[minmax(0,1fr)_380px] 2xl:items-start">
         {body}
         <ActivityFeed limit={8} />
       </div>

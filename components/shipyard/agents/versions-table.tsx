@@ -11,6 +11,7 @@ import { usePermission } from '../acting-as';
 import { fmtCost, fmtDateTime, fmtPct } from '../format';
 import { EmptyState } from '../states';
 import { StatusPill } from '../status';
+import { cn } from '@/lib/utils';
 
 export const GATE_ERROR_COPY = "The gate couldn't finish. No version was changed.";
 
@@ -63,16 +64,16 @@ function VersionRow({ d, v, rollbackTarget, onChanged }: { d: AgentDetail; v: Ve
   const prevVersion = d.versions.find((x) => x.version < v.version)?.version ?? null;
   const href = `/agents/${encodeURIComponent(d.name)}/versions/${v.version}`;
   return (
-    <tr className="hover:bg-accent">
+    <tr className="hover:bg-muted/60">
       <td className="px-3 py-2.5 align-top">
-        <Link href={href} className="font-mono font-semibold hover:underline">
+        <Link href={href} className="font-mono text-base font-bold hover:underline">
           v{v.version}
         </Link>
-        {serving && <span className="ml-2 text-xs font-semibold text-pass">serving</span>}
+        {serving && <span className="status-word ml-2 rounded-sm bg-signal px-1.5 py-0.5 text-xs text-signal-foreground">serving</span>}
         {prevVersion !== null && (
           <Link
             href={`/agents/${encodeURIComponent(d.name)}/diff?from=${prevVersion}&to=${v.version}`}
-            className="mt-1 flex w-fit items-center gap-1 text-xs font-medium text-primary hover:underline"
+            className="mt-1 flex w-fit items-center gap-1 text-xs font-bold text-link hover:underline"
           >
             <GitCompare className="size-3" aria-hidden /> Compare v{prevVersion}
           </Link>
@@ -91,7 +92,7 @@ function VersionRow({ d, v, rollbackTarget, onChanged }: { d: AgentDetail; v: Ve
         {serving && rollbackTarget !== null ? (
           <RollbackButton name={d.name} team={d.team} target={rollbackTarget} onDone={onChanged} />
         ) : (
-          <Link href={href} className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
+          <Link href={href} className="inline-flex items-center gap-1 text-sm font-bold text-link hover:underline">
             Gate board <ArrowRight className="size-3.5" aria-hidden />
           </Link>
         )}
@@ -110,7 +111,9 @@ export function VersionsTable({ d, testCount, onChanged }: { d: AgentDetail; tes
   }
   const previousLive = d.versions.find((x) => x.status === 'live' && d.current_version !== null && x.version < d.current_version);
   return (
-    <div className="overflow-x-auto rounded-md border bg-card">
+    <div className="flex flex-col gap-3">
+    <VersionHistory d={d} />
+    <div className="panel overflow-x-auto">
       <table className="w-full min-w-[560px] text-sm">
         <thead className="border-b bg-muted text-left">
           <tr>
@@ -131,5 +134,53 @@ export function VersionsTable({ d, testCount, onChanged }: { d: AgentDetail; tes
         </tbody>
       </table>
     </div>
+    </div>
   );
 }
+
+/**
+ * Pass rate over versions: one bar per deploy, oldest left, height = pass rate, coloured by the gate's verdict.
+ * The serving version carries the signal marker. Reads as the agent's departure history.
+ */
+function VersionHistory({ d }: { d: AgentDetail }) {
+  const vs = [...d.versions].reverse().slice(-16);
+  if (vs.length < 2) return null;
+  return (
+    <figure className="panel flex flex-col gap-2 p-3">
+      <figcaption className="flex items-baseline justify-between gap-2">
+        <span className="field-label">Pass rate by version</span>
+        <span className="text-xs text-muted-foreground">oldest → newest</span>
+      </figcaption>
+      <ol className="flex h-24 items-end gap-1.5" aria-label="Pass rate by version">
+        {vs.map((v) => {
+          const rate = v.pass_rate ?? 0;
+          const serving = v.version === d.current_version;
+          return (
+            <li key={v.version} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1">
+              <span
+                className={cn(
+                  'w-full max-w-10 rounded-t-[2px]',
+                  v.status === 'live' && 'bg-pass-solid',
+                  v.status === 'blocked' && 'bg-fail-solid',
+                  v.status === 'error' && 'bg-warn-solid',
+                  v.status === 'running' && 'animate-pulse bg-running-solid',
+                )}
+                style={{ height: `${Math.max(6, v.status === 'running' ? 30 : rate * 100)}%` }}
+                title={`v${v.version}: ${v.status}${v.pass_rate !== null ? `, ${fmtPct(v.pass_rate)}` : ''}`}
+              />
+              <span className={cn('font-mono text-xs tabular-nums', serving ? 'rounded-[2px] bg-signal px-1 font-bold text-signal-foreground' : 'text-muted-foreground')}>
+                v{v.version}
+              </span>
+              <span className="sr-only">
+                {v.status}
+                {v.pass_rate !== null ? `, ${fmtPct(v.pass_rate)}` : ''}
+                {serving ? ', serving' : ''}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+    </figure>
+  );
+}
+

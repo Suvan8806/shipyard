@@ -3,6 +3,7 @@
 // chips, detail objects as compact key: value chips. Table on desktop, stacked rows on mobile.
 import Link from 'next/link';
 import { useState } from 'react';
+import { cn } from '@/lib/utils';
 import { ScrollText } from 'lucide-react';
 import type { AuditRow } from '@/lib/contracts/api';
 import { getAudit } from '../api';
@@ -10,6 +11,7 @@ import { fmtDateTime, fmtPct, fmtRelative } from '../format';
 import { EmptyState, ErrorState, StaleNotice, TableSkeleton } from '../states';
 import { StatusPill } from '../status';
 import { useData } from '../use-data';
+import { Flap } from '../flap';
 
 const POLL_MS = 10_000;
 const GATE_ACTIONS = new Set(['live', 'blocked', 'error']);
@@ -17,7 +19,7 @@ const RATE_KEYS = new Set(['pass_rate', 'min_pass_rate']);
 
 function ActionTag({ action }: { action: string }) {
   if (GATE_ACTIONS.has(action)) return <StatusPill status={action as 'live' | 'blocked' | 'error'} />;
-  return <span className="inline-block rounded-sm border bg-muted px-1.5 py-0.5 font-mono text-xs whitespace-nowrap">{action}</span>;
+  return <span className="status-word inline-block rounded-sm bg-board px-1.5 py-1 text-xs whitespace-nowrap text-board-ink">{action}</span>;
 }
 
 function Target({ target }: { target: string | null }) {
@@ -25,14 +27,14 @@ function Target({ target }: { target: string | null }) {
   const versioned = target.match(/^([a-z0-9][a-z0-9-]*)@v(\d+)$/i);
   if (versioned) {
     return (
-      <Link href={`/agents/${encodeURIComponent(versioned[1])}/versions/${versioned[2]}`} className="text-primary hover:underline">
+      <Link href={`/agents/${encodeURIComponent(versioned[1])}/versions/${versioned[2]}`} className="text-link hover:underline">
         {target}
       </Link>
     );
   }
   if (/^[a-z0-9][a-z0-9-]*$/i.test(target)) {
     return (
-      <Link href={`/agents/${encodeURIComponent(target)}`} className="text-primary hover:underline">
+      <Link href={`/agents/${encodeURIComponent(target)}`} className="text-link hover:underline">
         {target}
       </Link>
     );
@@ -42,7 +44,7 @@ function Target({ target }: { target: string | null }) {
   if (scoped) {
     return (
       <span>
-        <Link href={`/agents/${encodeURIComponent(scoped[1])}`} className="text-primary hover:underline">
+        <Link href={`/agents/${encodeURIComponent(scoped[1])}`} className="text-link hover:underline">
           {scoped[1]}
         </Link>
         <span className="text-muted-foreground">:{scoped[2]}</span>
@@ -80,7 +82,7 @@ function Detail({ detail }: { detail: unknown }) {
       {shown.map(([k, v]) => {
         const text = fmtValue(k, v);
         return (
-          <span key={k} className="inline-flex max-w-full items-baseline gap-1 rounded-sm border bg-card px-1.5 py-0.5 text-xs" title={`${k}: ${text}`}>
+          <span key={k} className="inline-flex max-w-full items-baseline gap-1 rounded-sm bg-muted px-1.5 py-0.5 text-xs" title={`${k}: ${text}`}>
             <span className="text-muted-foreground">{k}</span>
             <span className="truncate font-mono">{text}</span>
           </span>
@@ -95,20 +97,22 @@ function Detail({ detail }: { detail: unknown }) {
   );
 }
 
-/** Enterprise authz rows: allowed / denied with the actor's role. Other rows show nothing. */
+/** Enterprise authz rows: allowed / denied with the actor's role, as board lamps. Other rows show a dash. */
 function Allowed({ row }: { row: AuditRow }) {
   if (row.allowed === null || row.allowed === undefined) return <span className="text-muted-foreground">—</span>;
   const role = row.actor_role ? ` · ${row.actor_role}` : '';
-  return row.allowed ? (
-    <span className="rounded-sm border border-pass-border bg-pass-subtle px-1.5 py-0.5 text-xs font-medium text-pass">Allowed{role}</span>
-  ) : (
-    <span className="rounded-sm border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-xs font-medium text-destructive">Denied{role}</span>
+  return (
+    <span className={cn('status-word inline-flex items-center gap-1.5 text-sm', row.allowed ? 'text-pass' : 'text-fail')}>
+      <span className={cn('lamp', row.allowed ? 'text-pass-lamp' : 'text-fail-lamp')} aria-hidden />
+      {row.allowed ? 'Allowed' : 'Denied'}
+      <span className="font-sans text-xs font-normal text-muted-foreground normal-case">{role}</span>
+    </span>
   );
 }
 
 function When({ ts }: { ts: string }) {
   return (
-    <time dateTime={ts} title={fmtRelative(ts)} className="font-mono text-xs whitespace-nowrap text-muted-foreground">
+    <time dateTime={ts} title={fmtRelative(ts)} className="font-mono text-xs whitespace-nowrap text-muted-foreground tabular-nums">
       {fmtDateTime(ts)}
     </time>
   );
@@ -117,7 +121,7 @@ function When({ ts }: { ts: string }) {
 function AuditTable({ rows }: { rows: AuditRow[] }) {
   return (
     <>
-      <div className="hidden overflow-x-auto rounded-md border bg-card md:block">
+      <div className="panel hidden overflow-x-auto md:block">
         <table className="w-full text-sm">
           <thead className="border-b bg-muted/60 text-left">
             <tr>
@@ -131,11 +135,11 @@ function AuditTable({ rows }: { rows: AuditRow[] }) {
           </thead>
           <tbody className="divide-y">
             {rows.map((r) => (
-              <tr key={r.id} className="align-top">
+              <tr key={r.id} className="align-top transition-colors hover:bg-muted/60">
                 <td className="px-4 py-2.5">
                   <When ts={r.ts} />
                 </td>
-                <td className="px-3 py-2.5 whitespace-nowrap">{r.actor || '—'}</td>
+                <td className="px-3 py-2.5 font-semibold whitespace-nowrap">{r.actor || '—'}</td>
                 <td className="px-3 py-2.5">
                   <ActionTag action={r.action} />
                 </td>
@@ -153,7 +157,7 @@ function AuditTable({ rows }: { rows: AuditRow[] }) {
           </tbody>
         </table>
       </div>
-      <ul className="divide-y rounded-md border bg-card md:hidden">
+      <ul className="panel divide-y overflow-hidden md:hidden">
         {rows.map((r) => (
           <li key={r.id} className="flex flex-col gap-1.5 px-4 py-3 text-sm">
             <div className="flex flex-wrap items-center gap-2">
@@ -164,7 +168,7 @@ function AuditTable({ rows }: { rows: AuditRow[] }) {
               </span>
             </div>
             <div className="flex flex-wrap items-baseline gap-x-2 text-muted-foreground">
-              <span className="text-foreground">{r.actor || '—'}</span>
+              <span className="font-semibold text-foreground">{r.actor || '—'}</span>
               <When ts={r.ts} />
             </div>
             <Detail detail={r.detail} />
@@ -181,11 +185,14 @@ export function AuditView() {
   const rows = data ? [...data].filter((r) => !deniedOnly || r.allowed === false).sort((a, b) => Date.parse(b.ts) - Date.parse(a.ts)) : null;
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
-      <header className="flex flex-col gap-1">
-        <h1 className="text-2xl font-bold tracking-tight">Audit log</h1>
+      <header className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="board-title text-3xl sm:text-4xl">Audit log</h1>
+          {rows && <Flap text={String(rows.length)} tone="signal" className="text-[1.6rem]" label={`${rows.length} events`} />}
+        </div>
         <p className="max-w-[70ch] text-muted-foreground">Every deploy, gate decision, rollback and approval, with who did it.</p>
-        <label className="mt-2 inline-flex w-fit items-center gap-2 text-sm">
-          <input type="checkbox" checked={deniedOnly} onChange={(e) => setDeniedOnly(e.target.checked)} />
+        <label className="mt-2 inline-flex w-fit cursor-pointer items-center gap-2 text-sm font-semibold">
+          <input type="checkbox" className="size-4 accent-(--signal)" checked={deniedOnly} onChange={(e) => setDeniedOnly(e.target.checked)} />
           Denied only
         </label>
         <StaleNotice error={data ? error : null} onRetry={refetch} />

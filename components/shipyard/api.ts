@@ -109,11 +109,13 @@ function actingAsHeader(): Record<string, string> {
   return id && id !== 'guest' ? { 'x-shipyard-user': id } : {};
 }
 
+type Role = 'viewer' | 'developer' | 'owner' | 'approver';
+
 export interface Identity {
   id: string;
   name: string;
   is_admin: boolean;
-  memberships: Record<string, 'viewer' | 'developer' | 'owner' | 'approver'>;
+  memberships: Record<string, Role | Role[]>;
   is_guest?: boolean;
 }
 

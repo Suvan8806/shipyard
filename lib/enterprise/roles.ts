@@ -19,19 +19,25 @@ export interface Identity {
   id: string;
   name: string;
   is_admin: boolean;
-  /** team id -> role. */
-  memberships: Record<string, Role>;
+  /** team id -> role (or roles: e.g. an owner who is also an approver). */
+  memberships: Record<string, Role | Role[]>;
   /** The public demo user (no X-Shipyard-User header): owner + approver rights on every team. */
   is_guest?: boolean;
 }
 
 export const GUEST: Identity = { id: 'guest', name: 'Guest (demo)', is_admin: false, memberships: {}, is_guest: true };
 
-export function roleFor(user: Identity, teamId: string | null): Role | 'admin' | 'guest' | null {
+export function rolesFor(user: Identity, teamId: string | null): Role[] {
+  if (!teamId) return [];
+  const r = user.memberships[teamId];
+  return r === undefined ? [] : Array.isArray(r) ? r : [r];
+}
+
+export function roleFor(user: Identity, teamId: string | null): string | null {
   if (user.is_admin) return 'admin';
   if (user.is_guest) return 'guest';
-  if (!teamId) return null;
-  return user.memberships[teamId] ?? null;
+  const roles = rolesFor(user, teamId);
+  return roles.length ? roles.join('+') : null;
 }
 
 export interface Decision {
@@ -86,7 +92,7 @@ export function check(
     unassigned ||
     role === 'admin' ||
     (role === 'guest' && action !== 'edit_library') ||
-    (role !== null && role !== 'guest' && (ALLOWED[action] as readonly string[]).includes(role));
+    rolesFor(user, teamId).some((r) => (ALLOWED[action] as readonly Role[]).includes(r));
   return allowed ? { ...base, allowed: true } : { ...base, allowed: false, code: 'forbidden', message: deniedMessage(action, opts.teamName ?? teamId) };
 }
 

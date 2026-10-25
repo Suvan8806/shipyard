@@ -10,10 +10,12 @@ import { getGate, getRun } from '../api';
 import { verdicts } from '../gate/gate-model';
 import { fmtCost, fmtDateTime } from '../format';
 import { EmptyState, ErrorState, isNotFound, NotFoundState, Skeleton, StaleNotice } from '../states';
+import { Flap } from '../flap';
 import { StatusPill } from '../status';
 import { useData, useNow } from '../use-data';
 import { errorText, Timeline } from './timeline';
 import { TwinDiffPanel } from './twin-diff';
+import { Caption } from '../onboarding';
 
 const POLL_MS = 2000;
 /** A run still open after this long was abandoned (function killed); stop polling and say so. */
@@ -57,11 +59,13 @@ function ErrorBanner({ events }: { events: RunEvent[] }) {
   const msg = last ? errorText(last.payload) : 'The run ended with an error but logged no error event.';
   const infra = !last || last.name === 'run' || last.name === 'rate_limit' || INFRA_RE.test(msg);
   return (
-    <div role="alert" className="flex flex-col gap-2 rounded-md border border-warn-border bg-warn-subtle p-4">
+    <div role="alert" className="panel flex flex-col gap-3 overflow-hidden">
+      <div className="h-1.5 bg-warn-solid" aria-hidden />
+      <div className="flex flex-col gap-3 px-4 pb-4">
       <div className="flex items-start gap-2">
         <TriangleAlert className="mt-0.5 size-5 shrink-0 text-warn" aria-hidden />
         <div className="min-w-0">
-          <p className="font-semibold">{infra ? 'Infrastructure error, not a test failure.' : 'The run stopped with an error.'}</p>
+          <p className="board-title text-xl">{infra ? 'Infrastructure error, not a test failure.' : 'The run stopped with an error.'}</p>
           <p className="text-sm text-muted-foreground">
             {infra
               ? 'The model provider or platform failed mid-run, so the agent was never judged on this scenario. Redeploy to retry it.'
@@ -69,9 +73,10 @@ function ErrorBanner({ events }: { events: RunEvent[] }) {
           </p>
         </div>
       </div>
-      <pre className="max-h-48 overflow-auto rounded-md border border-warn-border bg-card px-3 py-2 font-mono text-[13px] whitespace-pre-wrap break-words text-warn">
+      <pre className="max-h-48 overflow-auto rounded-[4px] border border-warn-border bg-warn-subtle px-3 py-2 font-mono text-[13px] whitespace-pre-wrap break-words text-warn">
         {msg}
       </pre>
+      </div>
     </div>
   );
 }
@@ -81,10 +86,10 @@ function OutcomePill({ t, open, result }: { t: RunTrace; open: boolean; result: 
   if (t.run.outcome === 'error') return <StatusPill status="error" />;
   if (result?.status === 'failed' || result?.status === 'passed') return <StatusPill status={result.status} size="lg" />;
   if (t.run.ended_at === null) {
-    return <span className="rounded-sm border bg-draft-subtle px-1.5 py-0.5 text-xs font-semibold text-draft">Never finished</span>;
+    return <span className="status-word rounded-sm bg-board px-1.5 py-1 text-[0.8125rem] text-board-muted">Never finished</span>;
   }
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-sm border bg-card px-1.5 py-0.5 text-xs font-semibold text-muted-foreground">
+    <span className="status-word inline-flex items-center gap-1.5 rounded-sm bg-board px-1.5 py-1 text-[0.8125rem] text-board-ink">
       <CircleCheck className="size-3" strokeWidth={2} aria-hidden /> Completed
     </span>
   );
@@ -95,20 +100,33 @@ function Totals({ t, open }: { t: RunTrace; open: boolean }) {
   const { run, events } = t;
   const end = run.ended_at ? Date.parse(run.ended_at) : open ? now : null;
   const blocks = events.filter((e) => e.type === 'policy_block').length;
-  const items = [
-    { label: 'Tokens', value: `${(run.tokens_in ?? 0).toLocaleString()} in / ${(run.tokens_out ?? 0).toLocaleString()} out` },
-    { label: 'Cost', value: fmtCost(run.cost_usd) },
-    { label: open ? 'Elapsed' : 'Latency', value: end === null ? '—' : fmtSeconds(end - Date.parse(run.started_at)) },
-    { label: 'Steps', value: `${events.length}${blocks ? ` · ${blocks} blocked` : ''}` },
-  ];
+  const latency = end === null ? '—' : fmtSeconds(end - Date.parse(run.started_at));
   return (
-    <dl className="grid grid-cols-2 gap-x-6 gap-y-3 rounded-md border bg-card px-4 py-3 sm:flex sm:flex-wrap sm:gap-x-10">
-      {items.map((x, i) => (
-        <div key={x.label} className={cn('min-w-0', i === 0 && 'col-span-2 sm:col-auto')}>
-          <dt className="field-label">{x.label}</dt>
-          <dd className="font-mono text-base font-semibold tabular-nums">{x.value}</dd>
-        </div>
-      ))}
+    <dl className="board grid grid-cols-2 gap-px overflow-hidden bg-board-rule sm:grid-cols-[minmax(0,1.3fr)_repeat(3,minmax(0,1fr))]">
+      <div className="col-span-2 flex min-w-0 flex-col gap-2 bg-board px-4 py-3.5 sm:col-span-1 sm:px-5">
+        <dt className="field-label text-board-muted">Tokens</dt>
+        <dd className="font-mono text-lg font-semibold text-board-ink tabular-nums sm:text-xl">
+          {(run.tokens_in ?? 0).toLocaleString()} <span className="text-sm font-normal text-board-muted">in</span> /{' '}
+          {(run.tokens_out ?? 0).toLocaleString()} <span className="text-sm font-normal text-board-muted">out</span>
+        </dd>
+      </div>
+      <div className="flex min-w-0 flex-col gap-2 bg-board px-4 py-3.5 sm:px-5">
+        <dt className="field-label text-board-muted">Cost</dt>
+        <dd>
+          <Flap text={fmtCost(run.cost_usd)} tone="ink" className="text-2xl sm:text-[1.75rem]" />
+        </dd>
+      </div>
+      <div className="flex min-w-0 flex-col gap-2 bg-board px-4 py-3.5 sm:px-5">
+        <dt className="field-label text-board-muted">{open ? 'Elapsed' : 'Latency'}</dt>
+        <dd className="font-mono text-lg font-semibold text-board-ink tabular-nums sm:text-xl">{latency}</dd>
+      </div>
+      <div className="col-span-2 flex min-w-0 flex-col gap-2 bg-board px-4 py-3.5 sm:col-span-1 sm:px-5">
+        <dt className="field-label text-board-muted">Steps</dt>
+        <dd className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <Flap text={String(events.length)} tone="ink" label={`${events.length} steps`} className="text-2xl sm:text-[1.75rem]" />
+          {blocks > 0 && <span className="status-word text-base text-fail-lamp">· {blocks} blocked</span>}
+        </dd>
+      </div>
     </dl>
   );
 }
@@ -131,31 +149,41 @@ function VerdictStrip({ r }: { r: ScenarioResultSummary }) {
   const failed = r.assertions.filter((a) => !a.passed);
   const fail = r.status === 'failed';
   return (
-    <section aria-label="Verdict" className={cn('overflow-hidden rounded-md border bg-card', fail && 'border-fail-solid')}>
-      <div className={cn('flex flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3', fail ? 'bg-fail-solid text-fail-solid-foreground' : 'bg-pass-subtle')}>
-        <div className="flex items-baseline gap-3">
-          <span className={cn('text-xs font-semibold tracking-[0.06em] uppercase', fail ? 'opacity-90' : 'text-muted-foreground')}>End state</span>
-          <span className={cn('status-word inline-flex items-center gap-1.5 text-2xl', !fail && 'text-pass')}>
-            {fail ? <OctagonX className="size-6 self-center" strokeWidth={2} aria-hidden /> : <CircleCheck className="size-6 self-center" aria-hidden />}
-            {fail ? 'Fail' : 'Pass'}
+    <section aria-label="Verdict" className="board overflow-hidden">
+      <div className={cn('h-1.5', fail ? 'bg-fail-solid' : 'bg-pass-solid')} aria-hidden />
+      <div className="flex flex-wrap items-center gap-x-8 gap-y-3 px-4 py-4 sm:px-5">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="field-label text-board-muted">End state</span>
+          <span className="inline-flex items-center gap-2">
+            {fail ? (
+              <OctagonX className="size-7 text-fail-lamp" strokeWidth={2.25} aria-hidden />
+            ) : (
+              <CircleCheck className="size-7 text-pass-lamp" strokeWidth={2.25} aria-hidden />
+            )}
+            <Flap text={fail ? 'Fail' : 'Pass'} tone={fail ? 'fail' : 'pass'} className="text-3xl" />
           </span>
         </div>
-        <div className={cn('flex items-baseline gap-3', fail ? 'opacity-85' : 'text-muted-foreground')}>
-          <span className="text-xs font-semibold tracking-[0.06em] uppercase">Reply check</span>
-          <span className="inline-flex items-center gap-1 text-sm font-semibold">
-            {v.reply === null ? <CircleDashed className="size-3.5 self-center" aria-hidden /> : v.reply ? <CircleCheck className="size-3.5 self-center" aria-hidden /> : <OctagonX className="size-3.5 self-center" aria-hidden />}
+        <div className="flex items-center gap-3">
+          <span className="field-label text-board-muted">Reply check</span>
+          <span
+            className={cn(
+              'status-word inline-flex items-center gap-1 text-base',
+              v.reply === null ? 'text-board-muted' : v.reply ? 'text-pass-lamp' : 'text-fail-lamp',
+            )}
+          >
+            {v.reply === null ? <CircleDashed className="size-4" aria-hidden /> : v.reply ? <CircleCheck className="size-4" aria-hidden /> : <OctagonX className="size-4" aria-hidden />}
             {v.reply === null ? 'not graded' : v.reply ? 'pass' : 'fail'}
           </span>
         </div>
-        {v.disagree && <span className="text-sm font-semibold sm:ml-auto">A reply-only eval would have shipped this.</span>}
+        {v.disagree && <p className="board-title text-xl text-board-ink sm:ml-auto sm:text-2xl">A reply-only eval would have shipped this.</p>}
       </div>
       {failed.length > 0 && (
-        <ul className="grid gap-x-6 gap-y-2 px-4 py-3 sm:grid-cols-2">
+        <ul className="grid gap-x-8 gap-y-3 border-t border-board-rule px-4 py-4 sm:grid-cols-2 sm:px-5">
           {failed.map((a, i) => (
             <li key={i} className="min-w-0 text-sm">
-              {a.assertion.label && <div className="font-semibold">{a.assertion.label}</div>}
-              <div className="font-mono text-[13px] break-words text-muted-foreground">
-                {a.expected} · got <span className="font-semibold text-fail">{a.actual}</span>
+              {a.assertion.label && <div className="font-semibold text-board-ink">{a.assertion.label}</div>}
+              <div className="mt-0.5 font-mono text-[13px] break-words text-board-muted">
+                {a.expected} · got <span className="font-semibold text-fail-lamp">{a.actual}</span>
               </div>
             </li>
           ))}
@@ -204,14 +232,17 @@ export function RunTraceView({ id }: { id: string }) {
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-6">
       <header className="flex flex-col gap-3">
-        <Link href={back} className="inline-flex items-center gap-1 self-start text-sm text-muted-foreground hover:text-foreground">
+        <Link
+          href={back}
+          className="inline-flex items-center gap-1 self-start rounded-sm text-sm font-semibold text-link underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+        >
           <ArrowLeft className="size-4" aria-hidden />
           {run.version !== null ? `${run.agent} v${run.version} gate board` : run.agent}
         </Link>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <h1 className="min-w-0 text-2xl font-bold tracking-tight text-balance break-words">
+          <h1 className="board-title min-w-0 text-3xl break-words sm:text-4xl">
             {run.scenario ? (
-              <Link href={back} className="hover:underline">
+              <Link href={back} className="rounded-sm underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
                 {run.scenario.includes('/') && (
                   <span className="font-normal text-muted-foreground">{run.scenario.slice(0, run.scenario.indexOf('/') + 1)}</span>
                 )}
@@ -221,9 +252,10 @@ export function RunTraceView({ id }: { id: string }) {
               'Live conversation'
             )}
           </h1>
-          <span className="rounded-sm border bg-muted px-1.5 py-0.5 font-mono text-xs">{run.mode}</span>
+          <span className="rounded-[3px] border bg-card px-1.5 py-1 font-mono text-xs">{run.mode}</span>
           <OutcomePill t={t} open={open} result={result} />
         </div>
+        <Caption>Every model call, tool call and the exact rows the agent changed in its twin database.</Caption>
         <p className="font-mono text-xs break-all text-muted-foreground">
           {run.id} · {fmtDateTime(run.started_at)}
         </p>
@@ -232,7 +264,7 @@ export function RunTraceView({ id }: { id: string }) {
         <Totals t={t} open={open} />
         {run.outcome === 'error' && <ErrorBanner events={t.events} />}
         {showDiff && (
-          <a href="#twin-diff" className="self-start text-sm font-semibold text-primary hover:underline xl:hidden">
+          <a href="#twin-diff" className="self-start rounded-sm text-sm font-semibold text-link underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none xl:hidden">
             Jump to twin diff
           </a>
         )}
@@ -240,7 +272,7 @@ export function RunTraceView({ id }: { id: string }) {
 
       <div className={cn('grid gap-6', showDiff && 'xl:grid-cols-12')}>
         <section aria-label="Timeline" className="min-w-0 xl:col-span-7">
-          <h2 className="mb-3 text-lg font-semibold">Timeline</h2>
+          <h2 className="board-title mb-3 text-2xl">Timeline</h2>
           {t.events.length === 0 ? (
             <EmptyState title={open ? 'Run in progress' : 'No events recorded'}>
               {open
@@ -252,9 +284,9 @@ export function RunTraceView({ id }: { id: string }) {
           )}
           {open && t.events.length > 0 && <p className="mt-4 text-sm text-muted-foreground">Run in progress. Refreshing every 2 seconds.</p>}
           {run.final_reply && (
-            <div className="mt-5 rounded-md border bg-card p-4">
-              <div className="field-label mb-1">Final reply</div>
-              <p className="max-w-[70ch] text-sm whitespace-pre-wrap">{run.final_reply}</p>
+            <div className="panel mt-5 p-4 sm:p-5">
+              <div className="field-label mb-2">Final reply</div>
+              <p className="max-w-[70ch] text-[0.9375rem] leading-relaxed break-words whitespace-pre-wrap">{run.final_reply}</p>
             </div>
           )}
         </section>

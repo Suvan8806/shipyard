@@ -55,10 +55,17 @@ insert into public.memberships (user_id, team_id, role) values
   ('sherry', 'branch-ops', 'owner'),
   ('maya', 'platform', 'owner'),
   ('maya', 'collections', 'developer')
-on conflict (user_id, team_id) do update set role = excluded.role;
+on conflict do nothing;
 
 update public.agents a set team_id = t.id
 from public.teams t
 where a.team = t.name and a.team_id is distinct from t.id;
 
 create index if not exists agents_team_id_idx on public.agents (team_id);
+
+-- A member can hold more than one role on a team (priya: owner + approver of Member Support, so the MCP user can
+-- decide approvals). Widen the primary key to (user_id, team_id, role).
+alter table public.memberships drop constraint if exists memberships_pkey;
+alter table public.memberships add primary key (user_id, team_id, role);
+insert into public.memberships (user_id, team_id, role) values ('priya', 'member-support', 'approver')
+on conflict do nothing;

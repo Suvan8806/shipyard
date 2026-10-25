@@ -103,3 +103,12 @@ describe('spec team validation', () => {
     await expect(validateSpecTeam(null)).resolves.toBeNull();
   });
 });
+
+describe('multiple roles on one team', () => {
+  it('an owner who is also approver can deploy and approve', () => {
+    const priya: Identity = { id: 'priya', name: 'Priya', is_admin: false, memberships: { 'member-support': ['owner', 'approver'] } };
+    expect(check(priya, 'deploy', 'member-support').allowed).toBe(true);
+    expect(check(priya, 'approve', 'member-support').allowed).toBe(true);
+    expect(check(priya, 'approve', 'member-support').your_role).toBe('owner+approver');
+  });
+});
