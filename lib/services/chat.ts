@@ -38,7 +38,7 @@ export async function chat(name: string, messages: ChatMessage[], startedAt = Da
   if (agent.current_version === null) throw new ServiceError('not_found', `${name} has no live version yet; deploy it first`);
   const v = await repo.getVersion(name, agent.current_version);
   if (!v) throw new ServiceError('not_found', `live version ${agent.current_version} of ${name} is missing`);
-  await requireBudget();
+  await requireBudget(name);
   let spec;
   try {
     spec = validateSpec(v.spec_yaml, v.scenarios).spec ?? looseSpec(v.spec_yaml);

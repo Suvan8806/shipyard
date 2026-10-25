@@ -16,6 +16,9 @@ import { generateTests } from '@/lib/services/tests';
 import { getStress, reconcileStressById, startStress } from '@/lib/services/stress';
 import { getVersionDiff } from '@/lib/services/diff';
 import { isServiceError } from '@/lib/services/errors';
+import { APPROVAL_TEAM, mcpUser, requireAgentRole, requireRole } from '@/lib/services/authz';
+import { getTeam, listTeams } from '@/lib/services/teams';
+import { agentNamesForTeam } from '@/lib/platform/enterprise-repo';
 import { clientIp, isAdminTokenValid, rateLimit, type LimitBucket } from '@/lib/services/guard';
 import type { GateResult } from '@/lib/types';
 
@@ -218,8 +221,10 @@ const handler = createMcpHandler(
       async ({ name, wait }, ctx) =>
         run(async () => {
           limit(ctx, 'deploy');
+          const me = await mcpUser();
+          await requireAgentRole(me, 'deploy', name);
           const origin = originOf(ctx);
-          const started = await startDeploy(name, ACTOR);
+          const started = await startDeploy(name, `mcp:${me.id}`);
           const gate = started.run();
           try {
             after(() => gate.then(() => undefined));
@@ -237,10 +242,36 @@ const handler = createMcpHandler(
       'list_agents',
       {
         title: 'List agents',
-        description: 'List all agents with team, owner, live version, latest gate status, pass rate, average cost and runs in the last 24h.',
+        description: 'List all agents with team, owner, live version, latest gate status, pass rate, average cost and runs in the last 24h. Pass team (a team id from list_teams) to filter.',
+        inputSchema: z.object({ team: z.string().max(60).optional().describe('Team id, e.g. member-support') }),
+      },
+      async ({ team }) =>
+        run(async () => {
+          const all = await listAgents();
+          if (!team) return all;
+          const names = new Set(await agentNamesForTeam(team));
+          return all.filter((a) => names.has(a.name));
+        }),
+    );
+
+    server.registerTool(
+      'list_teams',
+      {
+        title: 'List teams',
+        description: "List teams with agent count, model spend this month, monthly budget and budget_state (ok / warning at 80% / reached at 100%, when that team's model calls are refused).",
         inputSchema: z.object({}),
       },
-      async () => run(() => listAgents()),
+      async () => run(() => listTeams()),
+    );
+
+    server.registerTool(
+      'get_team_spend',
+      {
+        title: 'Get team spend',
+        description: "One team's model spend this month vs its monthly budget.",
+        inputSchema: z.object({ team: z.string().min(1).max(60) }),
+      },
+      async ({ team }) => run(() => getTeam(team)),
     );
 
     server.registerTool(
@@ -275,7 +306,12 @@ const handler = createMcpHandler(
         description: "Point the agent's live traffic at its previous LIVE version. Returns {current_version}.",
         inputSchema: z.object({ name: nameArg }),
       },
-      async ({ name }) => run(() => rollback(name, ACTOR)),
+      async ({ name }) =>
+        run(async () => {
+          const me = await mcpUser();
+          await requireAgentRole(me, 'rollback', name);
+          return rollback(name, `mcp:${me.id}`);
+        }),
     );
 
     server.registerTool(
@@ -309,7 +345,12 @@ const handler = createMcpHandler(
         description: 'Approve (executes the held tool call on the live system) or reject a pending approval. Returns {status}.',
         inputSchema: z.object({ id: z.number().int().min(1), decision: z.enum(['approve', 'reject']) }),
       },
-      async ({ id, decision }) => run(() => decide(id, decision, ACTOR)),
+      async ({ id, decision }) =>
+        run(async () => {
+          const me = await mcpUser();
+          await requireRole(me, 'approve', APPROVAL_TEAM, { target: `approval ${id}` });
+          return decide(id, decision, `mcp:${me.id}`);
+        }),
     );
 
     server.registerTool(
@@ -327,6 +368,7 @@ const handler = createMcpHandler(
       async ({ name, count, save }, ctx) =>
         run(async () => {
           limit(ctx, 'generate');
+          await requireAgentRole(await mcpUser(), 'run_tests', name);
           const { scenarios } = await generateTests(name, count);
           if (!save) return { scenarios };
           const validation = await addScenarios(name, scenarios, ACTOR);
@@ -351,6 +393,7 @@ const handler = createMcpHandler(
       async ({ name, mode, runs, count, models }, ctx) =>
         run(async () => {
           limit(ctx, 'deploy');
+          await requireAgentRole(await mcpUser(), 'run_tests', name);
           const { run: go, ...started } = await startStress(name, { mode, runs, count, models }, ACTOR);
           const job = go();
           try {

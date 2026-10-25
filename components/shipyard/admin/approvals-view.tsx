@@ -14,6 +14,7 @@ import { EmptyState, ErrorState, StaleNotice, TableSkeleton } from '../states';
 import { useData } from '../use-data';
 import { JsonBlock } from '../trace/json-block';
 import { Flap } from '../flap';
+import { usePermission } from '../acting-as';
 
 const POLL_MS = 5000;
 type Decided = 'approved' | 'rejected';
@@ -46,6 +47,7 @@ function PendingRow({
   busy: 'approve' | 'reject' | null;
   onDecide: (a: Approval, d: 'approve' | 'reject') => void;
 }) {
+  const perm = usePermission('approve', 'member-support');
   return (
     <li className="flex flex-col gap-3 px-4 py-4 sm:px-5 md:flex-row md:items-start md:gap-6">
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
@@ -64,12 +66,13 @@ function PendingRow({
       <div className="flex shrink-0 flex-wrap gap-2 md:pt-0.5">
         <Button
           variant="outline"
-          disabled={busy !== null}
+          disabled={busy !== null || !perm.allowed}
+          title={perm.reason ?? undefined}
           onClick={() => onDecide(a, 'reject')}
         >
           {busy === 'reject' ? <Loader2 className="animate-spin" aria-hidden /> : <X aria-hidden />} Reject
         </Button>
-        <Button disabled={busy !== null} onClick={() => onDecide(a, 'approve')}>
+        <Button disabled={busy !== null || !perm.allowed} title={perm.reason ?? undefined} onClick={() => onDecide(a, 'approve')}>
           {busy === 'approve' ? <Loader2 className="animate-spin" aria-hidden /> : <Check aria-hidden />} Approve
         </Button>
       </div>

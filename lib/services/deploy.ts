@@ -75,7 +75,7 @@ export async function startDeploy(name: string, actor = 'api'): Promise<StartedD
   const agent = await requireAgent(name);
   const { spec, scenarios, specHash } = compile(agent.draft_spec_yaml, agent.draft_scenarios);
 
-  await requireBudget();
+  await requireBudget(name);
   const recent = await repo.countDeploysSince(new Date(Date.now() - HOUR_MS));
   const max = maxDeploysPerHour();
   if (recent >= max) {

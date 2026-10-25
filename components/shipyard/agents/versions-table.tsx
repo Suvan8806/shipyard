@@ -7,6 +7,7 @@ import type { AgentDetail, VersionSummary } from '@/lib/contracts/api';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { errorMessage, rollback } from '../api';
+import { usePermission } from '../acting-as';
 import { fmtCost, fmtDateTime, fmtPct } from '../format';
 import { EmptyState } from '../states';
 import { StatusPill } from '../status';
@@ -14,7 +15,8 @@ import { cn } from '@/lib/utils';
 
 export const GATE_ERROR_COPY = "The gate couldn't finish. No version was changed.";
 
-function RollbackButton({ name, target, onDone }: { name: string; target: number; onDone: () => void }) {
+function RollbackButton({ name, team, target, onDone }: { name: string; team: string | null; target: number; onDone: () => void }) {
+  const perm = usePermission('rollback', team);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const confirm = async () => {
@@ -32,7 +34,7 @@ function RollbackButton({ name, target, onDone }: { name: string; target: number
   };
   return (
     <>
-      <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+      <Button size="sm" variant="outline" onClick={() => setOpen(true)} disabled={!perm.allowed} title={perm.reason ?? undefined}>
         <RotateCcw aria-hidden /> Rollback
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
@@ -88,7 +90,7 @@ function VersionRow({ d, v, rollbackTarget, onChanged }: { d: AgentDetail; v: Ve
       <td className="px-3 py-2.5 align-top text-xs whitespace-nowrap text-muted-foreground">{fmtDateTime(v.started_at)}</td>
       <td className="px-3 py-2.5 text-right align-top whitespace-nowrap">
         {serving && rollbackTarget !== null ? (
-          <RollbackButton name={d.name} target={rollbackTarget} onDone={onChanged} />
+          <RollbackButton name={d.name} team={d.team} target={rollbackTarget} onDone={onChanged} />
         ) : (
           <Link href={href} className="inline-flex items-center gap-1 text-sm font-bold text-link hover:underline">
             Gate board <ArrowRight className="size-3.5" aria-hidden />

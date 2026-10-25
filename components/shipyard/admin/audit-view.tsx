@@ -2,6 +2,8 @@
 // Audit log (design/direction.md 7.5): mono timestamps, gate events as status pills, other actions as neutral
 // chips, detail objects as compact key: value chips. Table on desktop, stacked rows on mobile.
 import Link from 'next/link';
+import { useState } from 'react';
+import { cn } from '@/lib/utils';
 import { ScrollText } from 'lucide-react';
 import type { AuditRow } from '@/lib/contracts/api';
 import { getAudit } from '../api';
@@ -95,6 +97,19 @@ function Detail({ detail }: { detail: unknown }) {
   );
 }
 
+/** Enterprise authz rows: allowed / denied with the actor's role, as board lamps. Other rows show a dash. */
+function Allowed({ row }: { row: AuditRow }) {
+  if (row.allowed === null || row.allowed === undefined) return <span className="text-muted-foreground">—</span>;
+  const role = row.actor_role ? ` · ${row.actor_role}` : '';
+  return (
+    <span className={cn('status-word inline-flex items-center gap-1.5 text-sm', row.allowed ? 'text-pass' : 'text-fail')}>
+      <span className={cn('lamp', row.allowed ? 'text-pass-lamp' : 'text-fail-lamp')} aria-hidden />
+      {row.allowed ? 'Allowed' : 'Denied'}
+      <span className="font-sans text-xs font-normal text-muted-foreground normal-case">{role}</span>
+    </span>
+  );
+}
+
 function When({ ts }: { ts: string }) {
   return (
     <time dateTime={ts} title={fmtRelative(ts)} className="font-mono text-xs whitespace-nowrap text-muted-foreground tabular-nums">
@@ -113,6 +128,7 @@ function AuditTable({ rows }: { rows: AuditRow[] }) {
               <th className="field-label px-4 py-2.5">When</th>
               <th className="field-label px-3 py-2.5">Actor</th>
               <th className="field-label px-3 py-2.5">Action</th>
+              <th className="field-label px-3 py-2.5">Result</th>
               <th className="field-label px-3 py-2.5">Target</th>
               <th className="field-label px-3 py-2.5">Detail</th>
             </tr>
@@ -126,6 +142,9 @@ function AuditTable({ rows }: { rows: AuditRow[] }) {
                 <td className="px-3 py-2.5 font-semibold whitespace-nowrap">{r.actor || '—'}</td>
                 <td className="px-3 py-2.5">
                   <ActionTag action={r.action} />
+                </td>
+                <td className="px-3 py-2.5 whitespace-nowrap">
+                  <Allowed row={r} />
                 </td>
                 <td className="px-3 py-2.5 font-mono text-xs whitespace-nowrap">
                   <Target target={r.target} />
@@ -143,6 +162,7 @@ function AuditTable({ rows }: { rows: AuditRow[] }) {
           <li key={r.id} className="flex flex-col gap-1.5 px-4 py-3 text-sm">
             <div className="flex flex-wrap items-center gap-2">
               <ActionTag action={r.action} />
+              <Allowed row={r} />
               <span className="font-mono text-xs break-all">
                 <Target target={r.target} />
               </span>
@@ -161,7 +181,8 @@ function AuditTable({ rows }: { rows: AuditRow[] }) {
 
 export function AuditView() {
   const { data, error, refetch } = useData('audit', getAudit, { pollMs: POLL_MS });
-  const rows = data ? [...data].sort((a, b) => Date.parse(b.ts) - Date.parse(a.ts)) : null;
+  const [deniedOnly, setDeniedOnly] = useState(false);
+  const rows = data ? [...data].filter((r) => !deniedOnly || r.allowed === false).sort((a, b) => Date.parse(b.ts) - Date.parse(a.ts)) : null;
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
       <header className="flex flex-col gap-2">
@@ -170,6 +191,10 @@ export function AuditView() {
           {rows && <Flap text={String(rows.length)} tone="signal" className="text-[1.6rem]" label={`${rows.length} events`} />}
         </div>
         <p className="max-w-[70ch] text-muted-foreground">Every deploy, gate decision, rollback and approval, with who did it.</p>
+        <label className="mt-2 inline-flex w-fit cursor-pointer items-center gap-2 text-sm font-semibold">
+          <input type="checkbox" className="size-4 accent-(--signal)" checked={deniedOnly} onChange={(e) => setDeniedOnly(e.target.checked)} />
+          Denied only
+        </label>
         <StaleNotice error={data ? error : null} onRetry={refetch} />
       </header>
       {rows ? (
@@ -183,7 +208,7 @@ export function AuditView() {
       ) : error ? (
         <ErrorState title="Couldn't load the audit log" error={error} onRetry={refetch} />
       ) : (
-        <TableSkeleton rows={8} cols={5} />
+        <TableSkeleton rows={8} cols={6} />
       )}
     </div>
   );

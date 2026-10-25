@@ -2,8 +2,10 @@
 // HTTP 402 'budget_exceeded' once total spend reaches SHIPYARD_BUDGET_USD.
 import { assertBudget, budgetUsd, currentSpendUsd, isBudgetExceeded } from '../runtime/budget';
 import { ServiceError } from './errors';
+import { requireTeamBudget } from './teams';
 
-export async function requireBudget(): Promise<void> {
+export async function requireBudget(agent?: string): Promise<void> {
+  if (agent) await requireTeamBudget(agent);
   try {
     await assertBudget();
   } catch (e) {

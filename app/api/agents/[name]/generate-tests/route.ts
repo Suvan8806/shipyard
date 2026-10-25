@@ -1,4 +1,5 @@
 import { GenerateTestsBody } from '@/lib/contracts/api';
+import { resolveUser, requireAgentRole } from '@/lib/services/authz';
 import { generateTests } from '@/lib/services/tests';
 import { body, guard, handle } from '../../../_lib/http';
 
@@ -11,6 +12,7 @@ export async function POST(req: Request, ctx: Ctx) {
   const { name } = await ctx.params;
   return handle(async () => {
     guard(req, 'generate');
+    await requireAgentRole(await resolveUser(req), 'run_tests', name);
     const data = await body(req, GenerateTestsBody);
     return generateTests(name, data.count);
   });

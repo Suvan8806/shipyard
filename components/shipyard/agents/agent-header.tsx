@@ -10,6 +10,7 @@ import { Caption } from '../onboarding';
 import { GenerateTestsDialog } from './generate-tests-dialog';
 import type { SaveState } from './spec-editor';
 import { useDeploy } from './use-deploy';
+import { usePermission } from '../acting-as';
 import { GATE_ERROR_COPY } from './versions-table';
 
 /** Why Deploy is disabled, or null when it can run. */
@@ -38,7 +39,8 @@ export function AgentHeader({
   const running = d.versions.find((v) => v.status === 'running') ?? null;
   const latest = d.versions[0] ?? null;
   const { busy, start } = useDeploy(d.name, running?.version ?? null);
-  const reason = blockReason(validation, save);
+  const perm = usePermission('deploy', d.team);
+  const reason = perm.reason ?? blockReason(validation, save);
   const enc = encodeURIComponent(d.name);
 
   return (
