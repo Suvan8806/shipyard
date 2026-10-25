@@ -165,6 +165,13 @@ export const validateSpec: ValidateSpecFn = (specYaml, scenarios) => {
     else if (!value || typeof value !== 'object' || Array.isArray(value)) {
       errors.push({ path: 'spec', message: 'spec must be a YAML mapping (name, goal, profile, tools, ...)' });
     } else {
+      // zod strips unknown keys, so a typo like `inherits:` would silently drop the shared blocks. Reject it instead.
+      const known = Object.keys(AgentSpecSchema.shape);
+      for (const key of Object.keys(value)) {
+        if (!known.includes(key)) {
+          errors.push({ path: `spec.${key}`, message: `unknown field "${key}"${didYouMean(key, known)}; allowed: ${known.join(', ')}` });
+        }
+      }
       const parsed = AgentSpecSchema.safeParse(value);
       if (!parsed.success) errors.push(...zodErrors(parsed.error, 'spec'));
       else {

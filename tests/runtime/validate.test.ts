@@ -104,6 +104,12 @@ assert:
     expect(r.errors[0].message).toMatch(/invalid YAML at line \d+/);
   });
 
+  it('rejects unknown top-level fields instead of silently dropping them (inherits -> inherit)', () => {
+    const r = validateSpec(support.spec.replace(/^inherit:/m, 'inherits:'), oneScenario);
+    expect(r.ok).toBe(false);
+    expect(r.errors.find((e) => e.path === 'spec.inherits')?.message).toMatch(/did you mean "inherit"/);
+  });
+
   it('requires at least one scenario', () => {
     const r = validateSpec(support.spec, {});
     expect(r.errors).toContainEqual({ path: 'scenarios', message: 'at least one scenario is required' });
