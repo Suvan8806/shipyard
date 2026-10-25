@@ -120,6 +120,22 @@ export async function tryReplay(
   if (!cached || cached.version === args.version) return null;
   const prior = await repo.listScenarioResults(args.agent, cached.version);
   if (!prior.length) return null;
+  // Placeholder 'running' rows (marker "replay", so the queue never claims them) keep the fan-out reconcile, run on
+  // every dashboard poll, from finalizing the version after only the first few staggered copies have landed.
+  for (const r of prior) {
+    await repo
+      .upsertScenarioResult({
+        agent: args.agent,
+        version: args.version,
+        scenario: r.scenario,
+        attempt: r.attempt,
+        status: 'running',
+        before_snapshot: { __gate: 'replay' } as never,
+        source: r.source,
+        pack: r.pack ?? null,
+      })
+      .catch((err) => console.error('[gate] replay placeholder failed', r.scenario, err));
+  }
   for (const r of prior) {
     await sleep(replayDelayMs());
     const snaps = r.run_id ? await repo.getScenarioResultByRun(r.run_id).catch(() => null) : null;
