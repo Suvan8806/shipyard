@@ -39,7 +39,7 @@ function Group({ title, count, icon, tone, children }: { title: string; count: n
 export function TestChanges({ diff }: { diff: VersionDiff }) {
   const g = groupChanges(diff.scenarios);
   const simple = (rows: Row[]) => (
-    <ul className="divide-y overflow-hidden rounded-md border bg-card">
+    <ul className="divide-y overflow-hidden panel">
       {rows.map((r) => (
         <li key={r.scenario} className="flex items-center gap-3 px-3 py-2 text-sm">
           <span className="min-w-0 flex-1 truncate" title={r.scenario}>
@@ -111,7 +111,7 @@ export function TestChanges({ diff }: { diff: VersionDiff }) {
         </Group>
       )}
       {g.still_passing.length > 0 && (
-        <details className="group rounded-md border bg-card">
+        <details className="group panel">
           <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-sm text-muted-foreground hover:text-foreground">
             <CircleCheck className="size-4 text-pass" strokeWidth={1.75} aria-hidden />
             {g.still_passing.length} tests passed in both versions

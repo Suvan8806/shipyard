@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CircleCheck, Loader2, OctagonX, RotateCw, TriangleAlert } from 'lucide-react';
 import type { ValidationError, ValidationResult } from '@/lib/types';
+import { Flap } from '../flap';
 import { cn } from '@/lib/utils';
 import { ApiRequestError, errorMessage, saveSpec } from '../api';
 
@@ -44,14 +45,14 @@ function validationFromError(e: unknown): ValidationResult | null {
 function HeaderState({ save, validation, onRetry }: { save: SaveState; validation: ValidationResult | null; onRetry: () => void }) {
   if (save === 'pending' || save === 'saving') {
     return (
-      <span className="flex items-center gap-1.5 text-muted-foreground">
+      <span className="flex items-center gap-1.5 text-board-muted">
         <Loader2 className="size-3.5 animate-spin" aria-hidden /> {save === 'saving' ? 'Saving…' : 'Editing…'}
       </span>
     );
   }
   if (save === 'error') {
     return (
-      <button type="button" onClick={onRetry} className="flex items-center gap-1.5 font-semibold text-warn hover:underline">
+      <button type="button" onClick={onRetry} className="flex items-center gap-1.5 font-bold text-warn-lamp hover:underline">
         <TriangleAlert className="size-3.5" aria-hidden /> Not saved · Retry
       </button>
     );
@@ -59,14 +60,14 @@ function HeaderState({ save, validation, onRetry }: { save: SaveState; validatio
   if (!validation) return null;
   if (validation.ok) {
     return (
-      <span className="flex items-center gap-1.5 font-semibold text-pass">
+      <span className="flex items-center gap-1.5 font-bold text-pass-lamp">
         <CircleCheck className="size-3.5" aria-hidden /> {save === 'saved' ? 'Saved · valid' : 'Valid'}
       </span>
     );
   }
   const n = validation.errors.length;
   return (
-    <span className="flex items-center gap-1.5 font-semibold text-fail">
+    <span className="flex items-center gap-1.5 font-bold text-fail-lamp">
       <OctagonX className="size-3.5" aria-hidden /> {n} {n === 1 ? 'error' : 'errors'}
     </span>
   );
@@ -154,28 +155,29 @@ export function SpecEditor({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="overflow-hidden rounded-md border bg-card">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b bg-muted px-3 py-2 text-xs">
-          <span className="font-mono text-[13px] font-medium">{name}.yaml</span>
-          <span className="text-muted-foreground">draft</span>
+      <div className="board overflow-hidden">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-board-rule bg-board-raised px-3 py-2.5 text-xs">
+          <span className="font-mono text-sm font-bold text-board-ink">{name}.yaml</span>
+          <span className="status-word rounded-sm bg-board-cell px-1.5 py-1 text-xs text-board-muted">draft</span>
           <span className="ml-auto flex items-center gap-4" aria-live="polite">
-            <span className={cn('font-mono tabular-nums', overBudget ? 'font-semibold text-warn' : 'text-muted-foreground')}>
-              {lineCount} / {LINE_BUDGET} lines
+            <span className="inline-flex items-center gap-1.5 text-board-muted">
+              <Flap text={`${lineCount}/${LINE_BUDGET}`} tone={overBudget ? 'warn' : 'signal'} className="text-lg" label={`${lineCount} of ${LINE_BUDGET} lines`} />
+              <span className="font-bold">lines</span>
             </span>
             <HeaderState save={save} validation={validation} onRetry={() => setAttempt((a) => a + 1)} />
           </span>
         </div>
-        <div className="max-h-[520px] overflow-auto">
+        <div className="max-h-[560px] overflow-auto [scrollbar-color:var(--board-cell)_transparent]">
           <div className="relative flex min-w-max font-mono" style={{ lineHeight: `${LINE_PX}px` }}>
             <div
-              className="sticky left-0 z-10 select-none border-r bg-muted text-right text-[13px] text-muted-foreground"
+              className="sticky left-0 z-10 select-none border-r border-board-rule bg-board text-right text-[13px] text-board-muted"
               style={{ paddingTop: PAD_Y, paddingBottom: PAD_Y }}
               aria-hidden
             >
               {lines.map((l, i) => (
                 <div key={i} className="relative pr-2 pl-3 tabular-nums">
-                  {l !== initialLines[i] && <span className="absolute inset-y-0.5 left-0 w-0.5 bg-primary" />}
-                  <span className={cn(errorLines.has(i) && 'font-semibold text-fail')}>{i + 1}</span>
+                  {l !== initialLines[i] && <span className="absolute inset-y-0.5 left-0 w-1 rounded-r-[2px] bg-signal" />}
+                  <span className={cn(errorLines.has(i) && 'font-bold text-fail-lamp')}>{i + 1}</span>
                 </div>
               ))}
             </div>
@@ -183,13 +185,13 @@ export function SpecEditor({
               {[...errorLines].map((i) => (
                 <div
                   key={`e${i}`}
-                  className="pointer-events-none absolute inset-x-0 bg-fail-subtle"
+                  className="pointer-events-none absolute inset-x-0 bg-fail-solid/30"
                   style={{ top: PAD_Y + i * LINE_PX, height: LINE_PX }}
                 />
               ))}
               {focusLine >= 0 && errorLines.has(focusLine) && (
                 <div
-                  className="pointer-events-none absolute inset-x-0 border-y border-fail-border"
+                  className="pointer-events-none absolute inset-x-0 border-y border-fail-lamp"
                   style={{ top: PAD_Y + focusLine * LINE_PX, height: LINE_PX }}
                 />
               )}
@@ -204,7 +206,7 @@ export function SpecEditor({
                 aria-label={`${name} spec YAML`}
                 aria-invalid={errors.length > 0}
                 wrap="off"
-                className="relative block w-full min-w-[560px] resize-none overflow-hidden bg-transparent px-3 text-sm outline-none"
+                className="relative block w-full min-w-[560px] resize-none overflow-hidden bg-transparent px-3 text-[0.9375rem] text-board-ink caret-signal outline-none selection:bg-signal/35 focus-visible:bg-board-raised/40"
                 style={{ height: lineCount * LINE_PX + PAD_Y * 2, lineHeight: `${LINE_PX}px`, paddingTop: PAD_Y, paddingBottom: PAD_Y }}
               />
             </div>
@@ -213,7 +215,7 @@ export function SpecEditor({
       </div>
 
       {save === 'error' && saveError && (
-        <div role="alert" className="flex flex-wrap items-center gap-2 rounded-md border border-warn-border bg-warn-subtle px-3 py-2 text-sm">
+        <div role="alert" className="flex flex-wrap items-center gap-2 rounded-md border border-warn-border bg-warn-subtle px-3 py-2.5 text-sm">
           <TriangleAlert className="size-4 shrink-0 text-warn" aria-hidden />
           <span className="min-w-0 flex-1">
             Couldn&apos;t save the draft: {saveError} Your edits are kept here.
@@ -225,7 +227,7 @@ export function SpecEditor({
       )}
 
       {errors.length > 0 && (
-        <ul className="flex flex-col gap-1 text-sm" aria-label="Validation errors">
+        <ul className="panel flex flex-col gap-1.5 p-3 text-sm" aria-label="Validation errors">
           {errors.map((e, i) => (
             <li key={`${e.path}-${i}`}>
               <button

@@ -131,7 +131,7 @@ function RecentRow({ name, s }: { name: string; s: StressSummary }) {
           )}
         </span>
         <span className="ml-auto text-xs whitespace-nowrap text-muted-foreground sm:ml-0">{fmtDateTime(s.created_at)}</span>
-        <ArrowRight className="size-4 text-primary" aria-hidden />
+        <ArrowRight className="size-4 text-link" aria-hidden />
       </Link>
     </li>
   );
@@ -154,7 +154,7 @@ function RecentRuns({ name }: { name: string }) {
   return (
     <div className="flex flex-col gap-2">
       <StaleNotice error={error} onRetry={refetch} />
-      <ul className="divide-y overflow-hidden rounded-md border bg-card">
+      <ul className="divide-y overflow-hidden panel">
         {data.map((s) => (
           <RecentRow key={s.stress_id} name={name} s={s} />
         ))}
@@ -256,7 +256,7 @@ export function StressLab({ name }: { name: string }) {
       </section>
 
       <section aria-labelledby="recent-stress" className="flex flex-col gap-3">
-        <h2 id="recent-stress" className="text-lg font-semibold">
+        <h2 id="recent-stress" className="board-title text-2xl">
           Recent stress runs
         </h2>
         <RecentRuns name={name} />

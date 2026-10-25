@@ -13,6 +13,7 @@ import { fmtDateTime, fmtRelative } from '../format';
 import { EmptyState, ErrorState, StaleNotice, TableSkeleton } from '../states';
 import { useData } from '../use-data';
 import { JsonBlock } from '../trace/json-block';
+import { Flap } from '../flap';
 
 const POLL_MS = 5000;
 type Decided = 'approved' | 'rejected';
@@ -27,8 +28,8 @@ function DecidedChip({ status }: { status: Decided }) {
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 text-xs font-semibold',
-        ok ? 'border-pass-border bg-pass-subtle text-pass' : 'bg-muted text-muted-foreground',
+        'status-word inline-flex items-center gap-1 rounded-sm px-1.5 py-1 text-xs',
+        ok ? 'bg-pass-subtle text-pass' : 'bg-muted text-muted-foreground',
       )}
     >
       <Icon className="size-3" strokeWidth={2} aria-hidden /> {ok ? 'Approved' : 'Rejected'}
@@ -46,24 +47,23 @@ function PendingRow({
   onDecide: (a: Approval, d: 'approve' | 'reject') => void;
 }) {
   return (
-    <li className="flex flex-col gap-3 px-4 py-4 md:flex-row md:items-start md:gap-6">
+    <li className="flex flex-col gap-3 px-4 py-4 sm:px-5 md:flex-row md:items-start md:gap-6">
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-          <span className="font-mono text-sm font-semibold">{a.type}</span>
+          <span className="status-word rounded-sm bg-board px-1.5 py-1 text-xs text-warn-lamp">{a.type}</span>
           <span className="font-mono text-xs text-muted-foreground">
             #{a.id} · {a.account_id ?? '—'}
           </span>
-          <span className="text-xs text-muted-foreground" title={fmtDateTime(a.created_at)}>
+          <span className="font-mono text-xs text-muted-foreground" title={fmtDateTime(a.created_at)}>
             {fmtRelative(a.created_at)}
           </span>
         </div>
-        <p className="max-w-[70ch] text-sm">{a.details || 'No details provided.'}</p>
+        <p className="max-w-[70ch] text-[0.95rem] leading-relaxed">{a.details || 'No details provided.'}</p>
         {a.tool_args !== null && a.tool_args !== undefined && <JsonBlock label="Tool call" value={a.tool_args} preview />}
       </div>
-      <div className="flex shrink-0 gap-2 md:pt-0.5">
+      <div className="flex shrink-0 flex-wrap gap-2 md:pt-0.5">
         <Button
           variant="outline"
-          className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
           disabled={busy !== null}
           onClick={() => onDecide(a, 'reject')}
         >
@@ -112,8 +112,11 @@ export function ApprovalsView() {
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-8">
-      <header className="flex flex-col gap-1">
-        <h1 className="text-2xl font-bold tracking-tight">Approvals</h1>
+      <header className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="board-title text-3xl sm:text-4xl">Approvals</h1>
+          {data && <Flap text={String(pending.length)} tone={pending.length > 0 ? 'signal' : 'muted'} className="text-[1.6rem]" label={`${pending.length} pending`} />}
+        </div>
         <p className="max-w-[70ch] text-muted-foreground">
           Actions an agent may not take alone. Approving runs the exact tool call the agent proposed; rejecting changes nothing.
         </p>
@@ -127,15 +130,16 @@ export function ApprovalsView() {
       ) : (
         <>
           <section className="flex flex-col gap-3" aria-label="Pending approvals">
-            <h2 className="flex items-baseline gap-2 text-xl font-semibold">
-              Pending <span className="font-mono text-sm font-normal text-muted-foreground tabular-nums">{pending.length}</span>
+            <h2 className="flex items-center gap-2.5">
+              <span className="board-title text-2xl">Pending</span>
+              <span className="rounded-sm bg-board px-1.5 py-0.5 font-mono text-sm text-board-ink tabular-nums">{pending.length}</span>
             </h2>
             {pending.length === 0 ? (
               <EmptyState icon={<Hand />} title="No approvals waiting.">
                 When an agent calls a tool that needs a human, the request lands here.
               </EmptyState>
             ) : (
-              <ul className="divide-y rounded-md border bg-card">
+              <ul className="panel divide-y overflow-hidden">
                 {pending.map((a) => (
                   <PendingRow key={a.id} a={a} busy={inFlight[a.id] ?? null} onDecide={onDecide} />
                 ))}
@@ -145,12 +149,13 @@ export function ApprovalsView() {
 
           {decided.length > 0 && (
             <section className="flex flex-col gap-3" aria-label="Decided approvals">
-              <h2 className="flex items-baseline gap-2 text-xl font-semibold">
-                Decided <span className="font-mono text-sm font-normal text-muted-foreground tabular-nums">{decided.length}</span>
+              <h2 className="flex items-center gap-2.5">
+                <span className="board-title text-2xl">Decided</span>
+                <span className="rounded-sm bg-muted px-1.5 py-0.5 font-mono text-sm text-muted-foreground tabular-nums">{decided.length}</span>
               </h2>
-              <ul className="divide-y rounded-md border bg-card">
+              <ul className="panel divide-y overflow-hidden">
                 {decided.map((a) => (
-                  <li key={a.id} className="flex flex-col gap-1 px-4 py-2.5 text-sm sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
+                  <li key={a.id} className="flex flex-col gap-1 px-4 py-2.5 text-sm transition-colors hover:bg-muted/60 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
                     <div className="flex flex-wrap items-center gap-2">
                       <DecidedChip status={a.status as Decided} />
                       <span className="font-mono font-semibold">{a.type}</span>
@@ -161,7 +166,7 @@ export function ApprovalsView() {
                     <span className="min-w-0 flex-1 truncate text-muted-foreground" title={a.details ?? undefined}>
                       {a.details}
                     </span>
-                    <span className="font-mono text-xs text-muted-foreground sm:ml-auto">
+                    <span className="font-mono text-xs text-muted-foreground tabular-nums sm:ml-auto">
                       {a.decided_at ? fmtDateTime(a.decided_at) : '—'}
                     </span>
                   </li>

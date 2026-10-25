@@ -3,8 +3,8 @@
 // scenarios that have no result row yet; distinguishes infrastructure errors from FAIL verdicts.
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CircleCheck, CircleDashed, OctagonX, PlayCircle, Sparkles, TriangleAlert } from 'lucide-react';
-import type { GateResult } from '@/lib/types';
+import { OctagonX, PlayCircle, Sparkles, TriangleAlert } from 'lucide-react';
+import type { GateResult, ScenarioResultSummary } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { getGate, replayGate, USE_MOCKS } from '../api';
@@ -12,9 +12,11 @@ import { fmtCost, fmtDuration, fmtPct } from '../format';
 import { ErrorState, isNotFound, NotFoundState, Skeleton, StaleNotice } from '../states';
 import { StatusPill } from '../status';
 import { useData, useNow } from '../use-data';
+import { Flap, type FlapTone } from '../flap';
 import { GateCard } from './gate-card';
+import { Caption } from '../onboarding';
 import { CatchSpotlight, RunningPanel, VerdictBanner } from './gate-banner';
-import { boardResults, countResults, groupResults, pickSpotlight, tagCodes, type GateCounts } from './gate-model';
+import { boardResults, countResults, groupResults, pickSpotlight, shortName, tagCodes, type GateCounts } from './gate-model';
 
 type Filter = 'all' | 'failed' | 'critical' | 'errored';
 /** No tag finished for this long while running: switch to the calm "still running" copy. */
@@ -33,67 +35,95 @@ function useLastProgress(done: number | undefined): number {
   return at;
 }
 
-function CountersStrip({ gate, counts }: { gate: GateResult; counts: GateCounts }) {
-  const untested = gate.coverage?.tools_untested ?? null;
-  // Numerals tick (180ms) as results land; keyed on the value so each change plays once. Never on a finished gate.
-  const tick = gate.status === 'running';
+/**
+ * The gate at a glance: one lamp per test, in board order, lit as each verdict lands. Green passed, red failed,
+ * orange not graded, cyan blinking while running. Reads from across the room before any number does.
+ */
+function LampStrip({ results }: { results: ScenarioResultSummary[] }) {
+  if (results.length === 0) return null;
   return (
-    <div className="flex flex-col gap-2 border-y py-4">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-3">
-        <p className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-base text-muted-foreground">
-          <span className="text-3xl font-bold tabular-nums text-foreground">{counts.total}</span> tests
-          <span aria-hidden>·</span>
-          <span className="text-3xl font-bold tabular-nums text-foreground">{counts.packs}</span> {counts.packs === 1 ? 'pack' : 'packs'}
+    <ol className="flex flex-wrap gap-[3px]" aria-label="Every test, in board order">
+      {results.map((r) => (
+        <li
+          key={r.scenario}
+          title={`${shortName(r)}: ${r.status}`}
+          className={cn(
+            'h-5 w-2.5 rounded-[2px] transition-colors duration-500 sm:h-6 sm:w-3',
+            r.status === 'passed' && 'bg-pass-solid',
+            r.status === 'failed' && 'bg-fail-solid',
+            r.status === 'error' && 'bg-warn-solid',
+            r.status === 'running' && 'animate-pulse bg-running-solid/70',
+          )}
+        >
+          <span className="sr-only">
+            {shortName(r)}: {r.status}
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function Tally({ n, label, tone, show = true }: { n: number; label: string; tone: FlapTone; show?: boolean }) {
+  if (!show) return null;
+  return (
+    <span className="inline-flex items-center gap-2">
+      <Flap text={String(n)} tone={tone} className="text-2xl" />
+      <span className="text-sm font-bold text-muted-foreground">{label}</span>
+    </span>
+  );
+}
+
+function CountersStrip({ gate, counts, results }: { gate: GateResult; counts: GateCounts; results: ScenarioResultSummary[] }) {
+  const untested = gate.coverage?.tools_untested ?? null;
+  const running = counts.running > 0 || gate.status === 'running';
+  return (
+    <section className="panel flex flex-col gap-4 p-4 sm:p-5" aria-label="Gate counts">
+      <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-4">
+        <p className="flex flex-wrap items-baseline gap-x-5 gap-y-2 text-base text-muted-foreground">
+          <span className="inline-flex items-baseline gap-2">
+            <span className="board-title text-4xl text-foreground tabular-nums">{counts.total}</span>
+            <span className="font-bold">tests</span>
+          </span>
+          <span className="inline-flex items-baseline gap-2">
+            <span className="board-title text-4xl text-foreground tabular-nums">{counts.packs}</span>
+            <span className="font-bold">{counts.packs === 1 ? 'pack' : 'packs'}</span>
+          </span>
           {untested !== null && (
-            <>
-              <span aria-hidden>·</span>
-              <span
-                className={cn('inline-flex items-baseline gap-2', untested.length > 0 && 'text-warn')}
-                title={untested.length ? `No test covers: ${untested.join(', ')}` : undefined}
-              >
-                <span className={cn('text-3xl font-bold tabular-nums', untested.length ? 'text-warn' : 'text-foreground')}>{untested.length}</span>
-                untested {untested.length === 1 ? 'tool' : 'tools'}
-                {untested.length > 0 && <TriangleAlert className="size-4 self-center" aria-hidden />}
-              </span>
-            </>
+            <span
+              className={cn('inline-flex items-baseline gap-2', untested.length > 0 && 'text-warn')}
+              title={untested.length ? `No test covers: ${untested.join(', ')}` : undefined}
+            >
+              <span className={cn('board-title text-4xl tabular-nums', untested.length ? 'text-warn' : 'text-foreground')}>{untested.length}</span>
+              <span className="font-bold">untested {untested.length === 1 ? 'tool' : 'tools'}</span>
+              {untested.length > 0 && <TriangleAlert className="size-4 self-center" aria-hidden />}
+            </span>
           )}
         </p>
-        <p className="flex flex-wrap items-center gap-x-5 gap-y-1 text-base">
-          <span className="inline-flex items-center gap-1.5 text-pass">
-            <CircleCheck className="size-5" strokeWidth={1.75} aria-hidden />
-            <span key={counts.passed} className={cn('inline-block text-2xl font-bold tabular-nums', tick && 'animate-counter-tick')}>{counts.passed}</span> passed
-          </span>
-          <span className={cn('inline-flex items-center gap-1.5', counts.failed > 0 ? 'text-fail' : 'text-muted-foreground')}>
-            <OctagonX className="size-5" strokeWidth={1.75} aria-hidden />
-            <span key={counts.failed} className={cn('inline-block text-2xl font-bold tabular-nums', tick && 'animate-counter-tick')}>{counts.failed}</span> failed
-          </span>
-          {counts.errored > 0 && (
-            <span className="inline-flex items-center gap-1.5 text-warn" title="Infrastructure errors: the run broke before grading. Not failures.">
-              <TriangleAlert className="size-5" strokeWidth={1.75} aria-hidden />
-              <span key={counts.errored} className={cn('inline-block text-2xl font-bold tabular-nums', tick && 'animate-counter-tick')}>{counts.errored}</span> not graded
-            </span>
-          )}
-          {(counts.running > 0 || gate.status === 'running') && (
-            <span className="inline-flex items-center gap-1.5 text-running">
-              <CircleDashed className="size-5 animate-running-ring" strokeWidth={1.75} aria-hidden />
-              <span key={counts.running} className={cn('inline-block text-2xl font-bold tabular-nums', tick && 'animate-counter-tick')}>{counts.running}</span> running
-            </span>
-          )}
+        <p className="flex flex-wrap items-center gap-x-5 gap-y-2">
+          <Tally n={counts.passed} label="passed" tone="pass" />
+          <Tally n={counts.failed} label="failed" tone={counts.failed > 0 ? 'fail' : 'muted'} />
+          <Tally n={counts.errored} label="not graded" tone="warn" show={counts.errored > 0} />
+          <Tally n={counts.running} label="running" tone="running" show={running} />
         </p>
       </div>
-      {untested && untested.length > 0 && <p className="text-sm text-warn">No test covers {untested.join(', ')}.</p>}
-      {counts.packs === 0 && counts.total > 0 && <p className="text-sm text-muted-foreground">Add test_packs to the spec to run the shared packs too.</p>}
-      {counts.disagreements > 0 && (
-        <p className="text-sm font-medium text-fail">
-          {counts.disagreements} {counts.disagreements === 1 ? 'test' : 'tests'} passed the reply check but failed on the data.
-        </p>
-      )}
-      {counts.errored > 0 && (
-        <p className="text-sm text-muted-foreground">
-          {counts.errored} {counts.errored === 1 ? 'run' : 'runs'} hit an infrastructure error (model rate limit or timeout). Those are not test failures.
-        </p>
-      )}
-    </div>
+      <LampStrip results={results} />
+      <div className="flex flex-col gap-1 empty:hidden">
+        {counts.disagreements > 0 && (
+          <p className="flex items-center gap-1.5 text-base font-bold text-fail">
+            <OctagonX className="size-4 shrink-0" strokeWidth={2.25} aria-hidden />
+            {counts.disagreements} {counts.disagreements === 1 ? 'test' : 'tests'} passed the reply check but failed on the data.
+          </p>
+        )}
+        {untested && untested.length > 0 && <p className="text-sm text-warn">No test covers {untested.join(', ')}.</p>}
+        {counts.packs === 0 && counts.total > 0 && <p className="text-sm text-muted-foreground">Add test_packs to the spec to run the shared packs too.</p>}
+        {counts.errored > 0 && (
+          <p className="text-sm text-muted-foreground">
+            {counts.errored} {counts.errored === 1 ? 'run' : 'runs'} hit an infrastructure error (model rate limit or timeout). Those are not test failures.
+          </p>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -104,15 +134,18 @@ function Header({ gate, counts, now, onReplay }: { gate: GateResult; counts: Gat
   // tests instead (labelled), so "54%" doesn't misstate an agent that passed 25 of 26 checks it was actually given.
   const graded = counts.errored > 0 ? counts.passed + counts.failed : 0;
   return (
-    <header className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-      <div className="flex flex-col gap-1">
+    <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div className="flex min-w-0 flex-col gap-2">
         <nav aria-label="Breadcrumb" className="text-sm text-muted-foreground">
-          <Link href="/agents" className="hover:text-foreground">Agents</Link> /{' '}
-          <Link href={`/agents/${gate.agent}`} className="hover:text-foreground">{gate.agent}</Link>
+          <Link href="/agents" className="font-bold hover:text-foreground">Agents</Link>
+          <span aria-hidden> / </span>
+          <Link href={`/agents/${gate.agent}`} className="font-bold hover:text-foreground">{gate.agent}</Link>
+          <span aria-hidden> / </span>
+          <span>gate</span>
         </nav>
-        <div className="flex flex-wrap items-center gap-2.5">
-          <h1 className="text-2xl font-bold text-balance">{gate.agent}</h1>
-          <span className="rounded-sm bg-muted px-1.5 font-mono text-base">v{gate.version}</span>
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="board-title text-3xl break-all sm:text-4xl">{gate.agent}</h1>
+          <Flap text={`v${gate.version}`} tone="signal" className="text-[1.6rem]" label={`version ${gate.version}`} />
           <StatusPill status={gate.status} size="lg" />
           {USE_MOCKS && !running && (
             <Button variant="ghost" size="sm" onClick={onReplay}>
@@ -120,13 +153,20 @@ function Header({ gate, counts, now, onReplay }: { gate: GateResult; counts: Gat
             </Button>
           )}
         </div>
+        <Caption>Each row is one test run on a throwaway copy of the database. The end state of the data decides; the reply check is shown but never decides.</Caption>
       </div>
-      <dl className="flex flex-wrap gap-x-6 gap-y-1 font-mono text-sm tabular-nums">
-        <div className="flex gap-1.5"><dt className="font-sans text-muted-foreground">{running ? 'Elapsed' : 'Took'}</dt><dd>{fmtDuration(elapsed)}</dd></div>
-        <div className="flex gap-1.5"><dt className="font-sans text-muted-foreground">Cost</dt><dd>{fmtCost(gate.total_cost_usd)}</dd></div>
-        <div className="flex gap-1.5">
-          <dt className="font-sans text-muted-foreground">{running ? 'Running' : graded ? 'Pass rate (graded)' : 'Pass rate'}</dt>
-          <dd>
+      <dl className="grid grid-cols-3 gap-x-6 gap-y-1 sm:flex sm:flex-wrap sm:gap-x-8">
+        <div className="flex flex-col gap-0.5">
+          <dt className="field-label">{running ? 'Elapsed' : 'Took'}</dt>
+          <dd className="font-mono text-lg tabular-nums">{fmtDuration(elapsed)}</dd>
+        </div>
+        <div className="flex flex-col gap-0.5">
+          <dt className="field-label">Cost</dt>
+          <dd className="font-mono text-lg tabular-nums">{fmtCost(gate.total_cost_usd)}</dd>
+        </div>
+        <div className="flex flex-col gap-0.5">
+          <dt className="field-label">{running ? 'Running' : graded ? 'Pass rate (graded)' : 'Pass rate'}</dt>
+          <dd className="font-mono text-lg tabular-nums">
             {running
               ? `${counts.done} / ${counts.total}`
               : graded
@@ -213,17 +253,18 @@ export function GateBoard({ name, version }: { name: string; version: number }) 
   ];
 
   return (
-    <div className="mx-auto flex max-w-[1440px] flex-col gap-6">
+    <div className="flex flex-col gap-6">
       <VerdictBanner gate={gate} counts={counts} results={all} />
       <Header gate={gate} counts={counts} now={now} onReplay={doReplay} />
       <StaleNotice error={error} onRetry={refetch} />
       {running && <RunningPanel gate={gate} counts={counts} stalled={stalled} />}
-      <CountersStrip gate={gate} counts={counts} />
+      <CountersStrip gate={gate} counts={counts} results={all} />
       {spotlight && <CatchSpotlight r={spotlight} more={failures.length - 1} />}
 
-      <section className="flex flex-col gap-6" aria-label="All tests">
-        <div className="sticky top-0 z-10 -mx-1 flex items-center bg-background/95 px-1 py-2 backdrop-blur-[2px] max-lg:top-[88px]">
-          <div className="inline-flex rounded-md border bg-card p-0.5 text-sm" role="tablist" aria-label="Filter tests">
+      <section className="flex flex-col gap-5" aria-label="All tests">
+        <div className="sticky top-0 z-10 -mx-1 flex flex-wrap items-center justify-between gap-3 bg-background/95 px-1 py-2 max-lg:top-[104px]">
+          <h2 className="board-title text-2xl">Every test</h2>
+          <div className="inline-flex rounded-md bg-board p-[3px] shadow-(--shadow-panel)" role="tablist" aria-label="Filter tests">
             {filters.map(([key, label]) => (
               <button
                 key={key}
@@ -232,8 +273,8 @@ export function GateBoard({ name, version }: { name: string; version: number }) 
                 aria-selected={filter === key}
                 onClick={() => setFilter(key)}
                 className={cn(
-                  'rounded-sm px-3 py-1.5 font-medium tabular-nums transition-colors',
-                  filter === key ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
+                  'status-word rounded-sm px-3 py-2 text-[0.9375rem] tabular-nums transition-colors focus-visible:ring-2 focus-visible:ring-signal focus-visible:outline-none',
+                  filter === key ? 'bg-signal text-signal-foreground' : 'text-board-muted hover:text-board-ink',
                 )}
               >
                 {label}
@@ -243,7 +284,7 @@ export function GateBoard({ name, version }: { name: string; version: number }) 
         </div>
 
         {groups.length === 0 && (
-          <p className="rounded-md border border-dashed p-8 text-center text-muted-foreground">
+          <p className="panel border-dashed p-8 text-center text-muted-foreground shadow-none">
             {counts.total === 0
               ? 'No tests yet. Spinning up twins…'
               : filter === 'all'
@@ -262,18 +303,18 @@ export function GateBoard({ name, version }: { name: string; version: number }) 
         {groups.map((g) => {
           const gc = countResults(g.results);
           return (
-            <div key={g.key} className="flex flex-col gap-3">
-              <div className="flex flex-wrap items-baseline gap-x-2">
-                <h2 className="flex items-center gap-1.5 text-lg font-semibold">
+            <div key={g.key} className="panel overflow-hidden">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b bg-muted/60 px-3 py-2.5 sm:px-4">
+                <h3 className="flex items-center gap-1.5 font-display text-xl font-extrabold">
                   {g.key === 'generated' && <Sparkles className="size-4 text-muted-foreground" aria-hidden />}
                   {g.title}
-                </h2>
+                </h3>
                 <span className="text-sm text-muted-foreground">{g.subtitle}</span>
-                <span className="ml-auto inline-flex items-center gap-1.5 font-mono text-sm tabular-nums text-muted-foreground">
+                <span className="ml-auto inline-flex items-center gap-2 font-mono text-sm tabular-nums text-muted-foreground">
                   {gc.total}
                   {gc.running > 0 && <span>· {gc.running} running</span>}
                   {gc.failed > 0 && (
-                    <span className="inline-flex items-center gap-1 rounded-sm bg-fail-solid px-1.5 py-0.5 font-sans font-semibold text-fail-solid-foreground">
+                    <span className="status-word inline-flex items-center gap-1 rounded-sm bg-fail-solid px-1.5 py-1 text-xs text-fail-solid-foreground">
                       <OctagonX className="size-3.5" aria-hidden /> {gc.failed} failed
                     </span>
                   )}
@@ -284,7 +325,17 @@ export function GateBoard({ name, version }: { name: string; version: number }) 
                   )}
                 </span>
               </div>
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(min(300px,100%),1fr))] items-start gap-3">
+              <div
+                className="hidden grid-cols-[7.4rem_4.25rem_minmax(0,1fr)_7.5rem_8.5rem] gap-x-4 border-b px-4 py-1.5 md:grid"
+                aria-hidden
+              >
+                <span className="field-label">Status</span>
+                <span className="field-label">Code</span>
+                <span className="field-label">Test</span>
+                <span className="field-label">Reply check</span>
+                <span className="field-label text-foreground">End state</span>
+              </div>
+              <div>
                 {g.results.map((r) => (
                   <GateCard key={r.scenario} r={r} code={codes.get(r.scenario) ?? g.code} />
                 ))}
@@ -299,13 +350,16 @@ export function GateBoard({ name, version }: { name: string; version: number }) 
 
 export function GateBoardSkeleton() {
   return (
-    <div className="mx-auto flex max-w-[1440px] flex-col gap-6" aria-busy="true" aria-label="Loading gate">
+    <div className="flex flex-col gap-6" aria-busy="true" aria-label="Loading gate">
+      <Skeleton className="h-36 rounded-lg" />
       <Skeleton className="h-10 w-72" />
-      <Skeleton className="h-24 rounded-lg" />
-      <Skeleton className="h-16" />
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(min(300px,100%),1fr))] gap-3">
+      <Skeleton className="h-20" />
+      <div className="panel flex flex-col divide-y">
         {Array.from({ length: 8 }, (_, i) => (
-          <Skeleton key={i} className="h-28" />
+          <div key={i} className="flex items-center gap-4 px-4 py-3">
+            <Skeleton className="h-5 w-24" />
+            <Skeleton className="h-4 flex-1" />
+          </div>
         ))}
       </div>
     </div>

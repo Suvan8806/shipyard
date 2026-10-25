@@ -47,13 +47,13 @@ const GLYPH: Record<Kind, string> = { added: '+', removed: '−', changed: '~', 
 
 function RowsTable({ rows, cols }: { rows: DiffRow[]; cols: string[] }) {
   return (
-    <div className="max-w-full min-w-0 overflow-x-auto rounded-md border">
+    <div className="max-w-full min-w-0 overflow-x-auto rounded-[4px] border">
       <table className="w-full min-w-max font-mono text-xs">
-        <thead className="border-b bg-muted/60 text-left text-muted-foreground">
+        <thead className="border-b bg-muted text-left text-muted-foreground">
           <tr>
             <th className="w-6" aria-label="Change" />
             {cols.map((c) => (
-              <th key={c} className="px-2 py-1.5 font-medium whitespace-nowrap">
+              <th key={c} className="px-2.5 py-2 font-semibold whitespace-nowrap">
                 {c}
               </th>
             ))}
@@ -72,7 +72,7 @@ function RowsTable({ rows, cols }: { rows: DiffRow[]; cols: string[] }) {
             >
               <td
                 className={cn(
-                  'px-1.5 text-center font-bold',
+                  'w-6 px-1.5 text-center text-sm font-bold',
                   r.kind === 'added' && 'text-diff-add',
                   r.kind === 'removed' && 'text-diff-remove',
                   r.kind === 'changed' && 'text-diff-change',
@@ -86,12 +86,15 @@ function RowsTable({ rows, cols }: { rows: DiffRow[]; cols: string[] }) {
                 return (
                   <td
                     key={c}
-                    className={cn('max-w-[280px] truncate px-2 py-1.5 whitespace-nowrap', hot && 'bg-diff-cell font-semibold')}
+                    className={cn('max-w-[280px] truncate px-2.5 py-2 whitespace-nowrap tabular-nums', hot && 'bg-diff-cell font-semibold')}
                     title={hot && r.before ? `${cell(c, r.before[c])} → ${value}` : value}
                   >
                     {hot && r.before ? (
                       <>
-                        <span className="text-muted-foreground">{cell(c, r.before[c])}</span> → {value}
+                        <span className="font-normal text-muted-foreground">{cell(c, r.before[c])}</span>
+                        <span className="px-1 font-normal text-muted-foreground" aria-hidden>→</span>
+                        <span className="sr-only"> to </span>
+                        {value}
                       </>
                     ) : (
                       value
@@ -160,10 +163,12 @@ function DiffTables({ diff, before }: { diff: TwinDiff; before: Snapshot | null 
         ];
         return (
           <div key={table} className="flex min-w-0 flex-col gap-1.5">
-            <h3 className="flex items-baseline gap-2 font-mono text-sm font-semibold">
+            <h3 className="flex flex-wrap items-baseline gap-x-3 gap-y-1 font-mono text-sm font-semibold">
               {table}
-              <span className="text-xs font-normal text-muted-foreground tabular-nums">
-                +{added.length} −{removed.length} ~{changed.length}
+              <span className="inline-flex gap-2 text-xs font-semibold tabular-nums">
+                <span className={added.length ? 'text-diff-add' : 'font-normal text-muted-foreground'}>+{added.length}</span>
+                <span className={removed.length ? 'text-diff-remove' : 'font-normal text-muted-foreground'}>−{removed.length}</span>
+                <span className={changed.length ? 'text-diff-change' : 'font-normal text-muted-foreground'}>~{changed.length}</span>
               </span>
             </h3>
             <RowsTable rows={rows} cols={diffColumns(rows)} />
@@ -181,7 +186,7 @@ function SnapshotTables({ snap }: { snap: Snapshot }) {
     <>
       {tables.map(([table, rows]) => (
         <div key={table} className="flex min-w-0 flex-col gap-1.5">
-          <h3 className="flex items-baseline gap-2 font-mono text-sm font-semibold">
+          <h3 className="flex flex-wrap items-baseline gap-x-3 gap-y-1 font-mono text-sm font-semibold">
             {table} <span className="text-xs font-normal text-muted-foreground tabular-nums">{rows!.length} rows</span>
           </h3>
           <RowsTable rows={rows!.map((row) => ({ kind: 'same' as const, row }))} cols={columnsOf(rows!)} />
@@ -210,16 +215,16 @@ export function TwinDiffPanel({
   const active: View = hasSnap ? view : 'changes';
 
   return (
-    <section id="twin-diff" className="flex min-w-0 scroll-mt-6 flex-col gap-3 rounded-md border bg-card p-4" aria-label="Twin diff">
-      <header className="flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <h2 className="text-lg font-semibold">Twin diff</h2>
-          <p className="text-sm text-muted-foreground">What this run changed in its twin database</p>
+    <section id="twin-diff" className="panel flex min-w-0 scroll-mt-6 flex-col gap-4 p-4 sm:p-5" aria-label="Twin diff">
+      <header className="flex flex-wrap items-end justify-between gap-3 border-b pb-4">
+        <div className="min-w-0">
+          <h2 className="board-title text-2xl">Twin diff</h2>
+          <p className="mt-1 text-sm text-muted-foreground">What this run changed in its twin database</p>
         </div>
         <div
           role="group"
           aria-label="Diff view"
-          className="inline-flex rounded-md border p-0.5 text-xs"
+          className="inline-flex rounded-[4px] bg-board p-0.5"
           title={hasSnap ? undefined : 'No snapshots were captured for this run'}
         >
           {(['changes', 'before', 'after'] as const).map((m) => (
@@ -230,8 +235,8 @@ export function TwinDiffPanel({
               aria-pressed={active === m}
               onClick={() => setView(m)}
               className={cn(
-                'rounded-sm px-2.5 py-1 font-semibold capitalize transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-40',
-                active === m ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
+                'status-word rounded-[3px] px-2.5 py-1.5 text-[0.8125rem] transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-signal focus-visible:ring-offset-1 focus-visible:ring-offset-board disabled:cursor-not-allowed disabled:opacity-40',
+                active === m ? 'bg-signal text-signal-foreground' : 'text-board-muted hover:text-board-ink',
               )}
             >
               {m}

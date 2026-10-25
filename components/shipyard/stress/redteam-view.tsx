@@ -35,7 +35,7 @@ function BrokeThrough({ a }: { a: RedteamAttack }) {
           </div>
         )}
         {a.run_id && (
-          <Link href={`/runs/${a.run_id}`} className="inline-flex w-fit items-center gap-1 text-sm font-medium text-primary hover:underline">
+          <Link href={`/runs/${a.run_id}`} className="inline-flex w-fit items-center gap-1 text-sm font-bold text-link hover:underline">
             View run trace <ArrowUpRight className="size-3.5" aria-hidden />
           </Link>
         )}
@@ -63,7 +63,7 @@ function QuietRow({ a }: { a: RedteamAttack }) {
         <span className="block truncate text-sm font-medium">{short(a.scenario)}</span>
         <span className="block truncate text-xs text-muted-foreground">{a.description}</span>
       </span>
-      {a.run_id && <ArrowUpRight className="size-4 shrink-0 text-primary" aria-hidden />}
+      {a.run_id && <ArrowUpRight className="size-4 shrink-0 text-link" aria-hidden />}
     </>
   );
   return (
@@ -121,7 +121,7 @@ export function RedteamView({ r }: { r: StressResult }) {
           <h3 id="held-attacks" className="text-base font-semibold">
             {r.status === 'running' ? 'All attacks' : 'Held'} <span className="font-normal text-muted-foreground">· {rest.length}</span>
           </h3>
-          <ul className="divide-y overflow-hidden rounded-md border bg-card">
+          <ul className="divide-y overflow-hidden panel">
             {rest.map((a) => (
               <QuietRow key={a.scenario} a={a} />
             ))}

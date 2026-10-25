@@ -75,7 +75,7 @@ export function VersionDiffPage({ name, from, to }: { name: string; from: number
     <div className="mx-auto flex max-w-7xl flex-col gap-6">
       {back}
       <header className="flex flex-col gap-3">
-        <h1 className="flex flex-wrap items-center gap-x-3 gap-y-2 text-2xl font-bold tracking-tight">
+        <h1 className="board-title flex flex-wrap items-center gap-x-3 gap-y-2 text-3xl sm:text-4xl">
           <span>What changed</span>
           {ready && versions.length > 0 ? (
             <span className="inline-flex flex-wrap items-center gap-2">
@@ -104,7 +104,7 @@ export function VersionDiffPage({ name, from, to }: { name: string; from: number
             </span>
           )}
           {ready && (
-            <Link href={`/agents/${enc}/versions/${toV}`} className="inline-flex items-center gap-1 font-medium text-primary hover:underline">
+            <Link href={`/agents/${enc}/versions/${toV}`} className="inline-flex items-center gap-1 font-bold text-link hover:underline">
               Gate board v{toV} <ArrowRight className="size-3.5" aria-hidden />
             </Link>
           )}
