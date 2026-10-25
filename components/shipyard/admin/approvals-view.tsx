@@ -3,6 +3,7 @@
 // optimistic with rollback + toast. Optimistic decisions live in `overrides` so a background poll that still
 // sees the row as pending can't flip it back while the request is in flight.
 import { useState } from 'react';
+import { usePermission } from '../acting-as';
 import { Check, CircleCheck, Hand, Loader2, X, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Approval } from '@/lib/contracts/api';
@@ -45,6 +46,7 @@ function PendingRow({
   busy: 'approve' | 'reject' | null;
   onDecide: (a: Approval, d: 'approve' | 'reject') => void;
 }) {
+  const perm = usePermission('approve', 'member-support');
   return (
     <li className="flex flex-col gap-3 px-4 py-4 md:flex-row md:items-start md:gap-6">
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
@@ -64,12 +66,13 @@ function PendingRow({
         <Button
           variant="outline"
           className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-          disabled={busy !== null}
+          disabled={busy !== null || !perm.allowed}
+          title={perm.reason ?? undefined}
           onClick={() => onDecide(a, 'reject')}
         >
           {busy === 'reject' ? <Loader2 className="animate-spin" aria-hidden /> : <X aria-hidden />} Reject
         </Button>
-        <Button disabled={busy !== null} onClick={() => onDecide(a, 'approve')}>
+        <Button disabled={busy !== null || !perm.allowed} title={perm.reason ?? undefined} onClick={() => onDecide(a, 'approve')}>
           {busy === 'approve' ? <Loader2 className="animate-spin" aria-hidden /> : <Check aria-hidden />} Approve
         </Button>
       </div>

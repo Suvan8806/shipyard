@@ -60,7 +60,7 @@ async function request<T>(path: string, init?: { method?: string; body?: unknown
   try {
     res = await fetch(`${API_PREFIX}${path}`, {
       method: init?.method ?? 'GET',
-      headers: init?.body !== undefined ? { 'content-type': 'application/json' } : undefined,
+      headers: { ...(init?.body !== undefined ? { 'content-type': 'application/json' } : {}), ...actingAsHeader() },
       body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
       cache: 'no-store',
     });
@@ -89,6 +89,53 @@ async function request<T>(path: string, init?: { method?: string; body?: unknown
     throw new ApiRequestError('internal', 'The API returned a response the dashboard could not read.', res.status);
   }
   return data as T;
+}
+
+// ---------- enterprise: "Acting as" identity ----------
+export const ACTING_AS_KEY = 'sy-acting-as';
+
+/** The user chosen in the "Acting as" switch (localStorage); none = the public demo guest. */
+export function actingAsId(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return localStorage.getItem(ACTING_AS_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function actingAsHeader(): Record<string, string> {
+  const id = actingAsId();
+  return id && id !== 'guest' ? { 'x-shipyard-user': id } : {};
+}
+
+export interface Identity {
+  id: string;
+  name: string;
+  is_admin: boolean;
+  memberships: Record<string, 'viewer' | 'developer' | 'owner' | 'approver'>;
+  is_guest?: boolean;
+}
+
+export interface TeamSummary {
+  id: string;
+  name: string;
+  agents: number;
+  spend_usd: number;
+  monthly_budget_usd: number | null;
+  budget_state: 'ok' | 'warning' | 'reached' | 'none';
+}
+
+export function getUsers(): Promise<Identity[]> {
+  return request('/api/users');
+}
+
+export function getMe(): Promise<Identity> {
+  return request('/api/me');
+}
+
+export function getTeams(): Promise<TeamSummary[]> {
+  return request('/api/teams');
 }
 
 /** User-facing message for any thrown value. */

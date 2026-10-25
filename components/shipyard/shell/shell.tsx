@@ -1,15 +1,17 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Bot, BookOpen, ShieldCheck, ScrollText, Moon, Sun } from 'lucide-react';
+import { Bot, BookOpen, ShieldCheck, ScrollText, Moon, Sun, Users } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 import { getApprovals, USE_MOCKS } from '../api';
 import { useData } from '../use-data';
+import { ActingAs } from '../acting-as';
 
 const NAV = [
   { href: '/agents', label: 'Agents', Icon: Bot },
   { href: '/library', label: 'Library', Icon: BookOpen },
+  { href: '/teams', label: 'Teams', Icon: Users },
   { href: '/approvals', label: 'Approvals', Icon: ShieldCheck },
   { href: '/audit', label: 'Audit', Icon: ScrollText },
 ] as const;
@@ -141,6 +143,7 @@ export function Shell({ children }: { children: ReactNode }) {
           <NavLinks pending={pending} />
         </nav>
         <div className="mt-auto flex flex-col gap-4">
+          <ActingAs />
           <ProdStatus apiDown={apiDown} />
           <div className="flex items-center justify-between gap-2">
             <Persona />
