@@ -118,6 +118,9 @@ export function bestModel(models: MatrixModel[]): MatrixModel | null {
   return ranked[0] ?? null;
 }
 
+/** $0.28, or more digits for sub-cent amounts so cheap models don't read as $0.00 ($0.0048). */
+export const formatUsd = (n: number) => `$${n >= 0.01 || n === 0 ? n.toFixed(2) : n.toPrecision(2)}`;
+
 export const shortModel = (id: string) => id.slice(id.lastIndexOf('/') + 1);
 
 export function matrixHeadline(models: MatrixModel[], running: boolean): string {
@@ -128,7 +131,7 @@ export function matrixHeadline(models: MatrixModel[], running: boolean): string 
   const best = bestModel(models);
   if (!best) return 'Model matrix: no model finished';
   const pct = Math.round((best.pass_rate ?? 0) * 1000) / 10;
-  return `${shortModel(best.model)} wins: ${pct}% at $${(best.cost_usd ?? 0).toFixed(2)}`;
+  return `${shortModel(best.model)} wins: ${pct}% at ${formatUsd(best.cost_usd ?? 0)}`;
 }
 
 // ---------- version diff ----------

@@ -109,6 +109,7 @@ describe('matrix', () => {
     expect(bestModel(models)?.model).toBe('google/gemini-3.5-flash-lite');
     expect(matrixHeadline(models, false)).toBe('gemini-3.5-flash-lite wins: 100% at $0.05');
     expect(bestModel([m('a/b', null, null)])).toBeNull();
+    expect(matrixHeadline([m('google/gemini-3.5-flash-lite', 0.95, 0.004777)], false)).toBe('gemini-3.5-flash-lite wins: 95% at $0.0048');
   });
 });
 
