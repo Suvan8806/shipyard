@@ -45,11 +45,11 @@ export function assertionText(a: Assertion): string {
 
 export function ScenarioItem({ s, className, as: Tag = 'li' }: { s: ParsedScenario; className?: string; as?: 'li' | 'div' }) {
   return (
-    <Tag className={cn('rounded-md border bg-card p-3', className)}>
+    <Tag className={cn('panel p-3 shadow-none', className)}>
       <div className="flex items-center gap-2">
-        <span className="font-mono text-sm font-medium">{s.name}</span>
+        <span className="font-mono text-sm font-bold">{s.name}</span>
         {s.generated && (
-          <span className="inline-flex items-center gap-1 rounded-sm border bg-muted px-1.5 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <span className="status-word inline-flex items-center gap-1 rounded-sm bg-board px-1.5 py-0.5 text-xs text-board-ink">
             <Sparkles className="size-3" /> generated
           </span>
         )}
@@ -62,7 +62,7 @@ export function ScenarioItem({ s, className, as: Tag = 'li' }: { s: ParsedScenar
             key={i}
             className={cn(
               'rounded-sm border px-1.5 py-0.5 text-xs',
-              a.critical ? 'border-border bg-muted font-medium text-foreground' : 'text-muted-foreground',
+              a.critical ? 'border-foreground/25 bg-muted font-bold text-foreground' : 'text-muted-foreground',
             )}
             title={a.critical ? 'Critical: blocks the deploy if it fails' : 'Non-critical'}
           >

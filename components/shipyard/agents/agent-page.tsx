@@ -78,12 +78,12 @@ function InheritedChips({ parts }: { parts: SpecParts }) {
   const shown = groups.filter(([, v]) => v.length > 0);
   if (shown.length === 0) return null;
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+    <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
       {shown.map(([label, values]) => (
         <span key={label} className="flex flex-wrap items-center gap-1.5">
-          <span className="font-mono text-muted-foreground">{label}:</span>
+          <span className="field-label">{label}</span>
           {values.map((v) => (
-            <Link key={v} href="/library" className="rounded-sm border bg-muted px-1.5 py-0.5 font-mono text-foreground hover:border-primary hover:text-primary">
+            <Link key={v} href="/library" className="rounded-sm bg-board px-1.5 py-1 font-mono text-board-ink transition-colors hover:bg-signal hover:text-signal-foreground">
               {v}
             </Link>
           ))}
@@ -95,7 +95,7 @@ function InheritedChips({ parts }: { parts: SpecParts }) {
 
 function PageSkeleton() {
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-6" aria-busy="true" aria-label="Loading agent">
+    <div className="flex flex-col gap-6" aria-busy="true" aria-label="Loading agent">
       <Skeleton className="h-4 w-20" />
       <div className="flex flex-col gap-2">
         <Skeleton className="h-8 w-64" />
@@ -158,8 +158,8 @@ export function AgentPage({ name, packTemplates }: { name: string; packTemplates
   }
   if (error && !d) {
     return (
-      <div className="mx-auto flex max-w-7xl flex-col gap-4">
-        <Link href="/agents" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+      <div className="flex flex-col gap-4">
+        <Link href="/agents" className="inline-flex items-center gap-1 text-sm font-bold text-muted-foreground hover:text-foreground">
           <ArrowLeft className="size-4" aria-hidden /> Agents
         </Link>
         <ErrorState title={`Couldn't load ${name}`} error={error} onRetry={refetch} />
@@ -174,18 +174,18 @@ export function AgentPage({ name, packTemplates }: { name: string; packTemplates
   const save = spec?.save ?? 'idle';
 
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-6">
+    <div className="flex flex-col gap-7">
       <AgentHeader d={d} validation={validation} save={save} onScenariosChanged={() => void refetch()} />
       <StaleNotice error={error} onRetry={refetch} />
 
-      <div className="grid gap-6 2xl:grid-cols-12">
-        <section className="flex min-w-0 flex-col gap-3 2xl:col-span-7" aria-label="Spec">
+      <div className="grid gap-6 xl:grid-cols-12">
+        <section className="flex min-w-0 flex-col gap-3 xl:col-span-7" aria-label="Spec">
           <SpecEditor key={d.name} name={name} initial={d.draft_spec_yaml} initialValidation={d.validation} onStatus={setSpec} />
           <InheritedChips parts={parts} />
         </section>
 
-        <Tabs defaultValue="scenarios" className="min-w-0 2xl:col-span-5">
-          <TabsList>
+        <Tabs defaultValue="scenarios" className="min-w-0 xl:col-span-5">
+          <TabsList className="max-w-full overflow-x-auto">
             <TabsTrigger value="scenarios">Scenarios</TabsTrigger>
             <TabsTrigger value="versions">Versions</TabsTrigger>
             <TabsTrigger value="chat">Chat</TabsTrigger>
