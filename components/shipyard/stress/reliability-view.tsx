@@ -9,9 +9,11 @@ import type { ReliabilityScenario, StressResult } from './contract';
 
 type Verdict = 'flaky' | 'failed' | 'passed' | 'pending';
 
-function verdict(s: ReliabilityScenario): Verdict {
+/** `total` = runs requested; a test only counts as solid / always-failed once all its runs are in. */
+function verdict(s: ReliabilityScenario, total: number): Verdict {
   if (s.runs === 0) return 'pending';
   if (s.flaky || (s.passes > 0 && s.passes < s.runs)) return 'flaky';
+  if (s.runs < total) return 'pending';
   if (s.passes === 0) return 'failed';
   return 'passed';
 }
@@ -58,7 +60,7 @@ function Tag({ v }: { v: Verdict }) {
 }
 
 function Row({ s, total }: { s: ReliabilityScenario; total: number }) {
-  const v = verdict(s);
+  const v = verdict(s, total);
   const loud = v === 'flaky' || v === 'failed';
   // Pass runs are listed first; the run after the passes is the first failing one.
   const failRun = s.passes < s.runs ? s.run_ids[s.passes] : null;
@@ -95,10 +97,10 @@ function Row({ s, total }: { s: ReliabilityScenario; total: number }) {
 export function ReliabilityView({ r }: { r: StressResult }) {
   const rel = r.reliability;
   if (!rel) return null;
-  const rows = [...rel.scenarios].sort((a, b) => ORDER[verdict(a)] - ORDER[verdict(b)] || a.scenario.localeCompare(b.scenario));
-  const flaky = rel.scenarios.filter((s) => verdict(s) === 'flaky').length;
-  const failed = rel.scenarios.filter((s) => verdict(s) === 'failed').length;
-  const passed = rel.scenarios.filter((s) => verdict(s) === 'passed').length;
+  const rows = [...rel.scenarios].sort((a, b) => ORDER[verdict(a, rel.runs)] - ORDER[verdict(b, rel.runs)] || a.scenario.localeCompare(b.scenario));
+  const flaky = rel.scenarios.filter((s) => verdict(s, rel.runs) === 'flaky').length;
+  const failed = rel.scenarios.filter((s) => verdict(s, rel.runs) === 'failed').length;
+  const passed = rel.scenarios.filter((s) => verdict(s, rel.runs) === 'passed').length;
   const done = r.status !== 'running';
   return (
     <div className="flex flex-col gap-5">

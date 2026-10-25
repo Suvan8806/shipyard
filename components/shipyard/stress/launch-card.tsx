@@ -165,7 +165,7 @@ export function NumberStepper({
         <Button variant="outline" size="icon" aria-label={`More ${unit}`} disabled={value >= max} onClick={() => onChange(Math.min(max, value + step))}>
           <Plus aria-hidden />
         </Button>
-        <span className="w-20 text-right">
+        <span className="w-28 shrink-0 text-right whitespace-nowrap">
           <span className="text-2xl font-bold tabular-nums">{value}</span> <span className="text-sm text-muted-foreground">{unit}</span>
         </span>
       </div>

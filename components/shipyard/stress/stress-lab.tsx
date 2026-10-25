@@ -111,11 +111,11 @@ function RecentRow({ name, s }: { name: string; s: StressSummary }) {
         href={`/agents/${encodeURIComponent(name)}/stress/${encodeURIComponent(s.stress_id)}`}
         className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 hover:bg-accent"
       >
-        <span className="inline-flex w-36 items-center gap-2 text-sm font-semibold">
+        <span className="inline-flex items-center gap-2 text-sm font-semibold sm:w-36">
           <meta.Icon className="size-4 text-muted-foreground" strokeWidth={1.75} aria-hidden />
           {meta.label}
         </span>
-        <span className="min-w-0 flex-1 text-sm">
+        <span className="order-last min-w-0 basis-full text-sm sm:order-none sm:basis-0 sm:flex-1">
           {s.status === 'running' ? (
             <span className="inline-flex items-center gap-1.5 text-running">
               <CircleDashed className="size-4 animate-running-ring" aria-hidden /> {s.headline || 'Running…'}
@@ -130,7 +130,7 @@ function RecentRow({ name, s }: { name: string; s: StressSummary }) {
             </span>
           )}
         </span>
-        <span className="text-xs whitespace-nowrap text-muted-foreground">{fmtDateTime(s.created_at)}</span>
+        <span className="ml-auto text-xs whitespace-nowrap text-muted-foreground sm:ml-0">{fmtDateTime(s.created_at)}</span>
         <ArrowRight className="size-4 text-primary" aria-hidden />
       </Link>
     </li>
