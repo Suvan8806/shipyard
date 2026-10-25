@@ -205,7 +205,7 @@ export default function Landing() {
 
         {/* Connect from Claude Code */}
         <section id="connect" className="scroll-mt-16 border-b bg-card">
-          <div className="mx-auto grid max-w-[1240px] gap-8 px-4 py-16 sm:px-6 lg:grid-cols-[1fr_1.2fr] lg:items-center lg:py-20">
+          <div className="mx-auto grid max-w-[1240px] gap-8 px-4 py-16 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] lg:items-center lg:py-20">
             <div className="flex flex-col gap-3">
               <h2 className="board-title text-4xl sm:text-5xl">Connect from Claude Code</h2>
               <p className="text-lg leading-relaxed text-muted-foreground">
@@ -213,7 +213,7 @@ export default function Landing() {
                 lights up for those deploys too.
               </p>
             </div>
-            <div className="flex flex-col gap-3">
+            <div className="flex min-w-0 flex-col gap-3">
               <CopyCommand command={MCP_COMMAND} />
               <p className="text-sm text-muted-foreground">
                 Tools: <span className="font-mono">create_agent</span>, <span className="font-mono">deploy_agent</span>,{' '}

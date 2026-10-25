@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Bot, BookOpen, ShieldCheck, ScrollText, Moon, Sun } from 'lucide-react';
+import { Bot, BookOpen, CircleHelp, ShieldCheck, ScrollText, Moon, Sun } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 import { getApprovals, USE_MOCKS } from '../api';
@@ -73,6 +73,20 @@ function ThemeToggle() {
     >
       {dark ? <Sun className="size-4" /> : <Moon className="size-4" />}
     </button>
+  );
+}
+
+
+function HelpLink() {
+  return (
+    <Link
+      href="/"
+      className="grid size-9 place-items-center rounded-md text-sidebar-muted transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-signal focus-visible:outline-none"
+      aria-label="How Shipyard works"
+      title="How Shipyard works"
+    >
+      <CircleHelp className="size-4" aria-hidden />
+    </Link>
   );
 }
 
@@ -176,7 +190,10 @@ export function Shell({ children }: { children: ReactNode }) {
           </div>
           <div className="flex items-center justify-between gap-2">
             <Persona />
-            <ThemeToggle />
+            <div className="flex items-center">
+              <HelpLink />
+              <ThemeToggle />
+            </div>
           </div>
         </div>
       </aside>
@@ -186,6 +203,7 @@ export function Shell({ children }: { children: ReactNode }) {
           <Wordmark />
           <div className="flex items-center gap-2">
             <ProdStatus apiDown={apiDown} />
+            <HelpLink />
             <ThemeToggle />
           </div>
         </div>

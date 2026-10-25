@@ -14,6 +14,7 @@ import { StatusPill } from '../status';
 import { useData, useNow } from '../use-data';
 import { Flap, type FlapTone } from '../flap';
 import { GateCard } from './gate-card';
+import { Caption } from '../onboarding';
 import { CatchSpotlight, RunningPanel, VerdictBanner } from './gate-banner';
 import { boardResults, countResults, groupResults, pickSpotlight, shortName, tagCodes, type GateCounts } from './gate-model';
 
@@ -152,6 +153,7 @@ function Header({ gate, counts, now, onReplay }: { gate: GateResult; counts: Gat
             </Button>
           )}
         </div>
+        <Caption>Each row is one test run on a throwaway copy of the database. The end state of the data decides; the reply check is shown but never decides.</Caption>
       </div>
       <dl className="grid grid-cols-3 gap-x-6 gap-y-1 sm:flex sm:flex-wrap sm:gap-x-8">
         <div className="flex flex-col gap-0.5">

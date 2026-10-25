@@ -6,6 +6,7 @@ import type { ValidationResult } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Flap } from '../flap';
 import { StatusPill } from '../status';
+import { Caption } from '../onboarding';
 import { GenerateTestsDialog } from './generate-tests-dialog';
 import type { SaveState } from './spec-editor';
 import { useDeploy } from './use-deploy';
@@ -64,6 +65,7 @@ export function AgentHeader({
           <p className="text-base text-muted-foreground">
             <span className="font-bold text-foreground">{d.team ?? 'No team'}</span> · owner {d.owner ?? 'unassigned'}
           </p>
+          <Caption>Edit the spec, then Deploy: the gate decides if it ships.</Caption>
           {latest && latest.status === 'error' && latest.version !== d.current_version && (
             <p className="text-sm text-warn">
               <Link href={`/agents/${enc}/versions/${latest.version}`} className="font-mono font-semibold hover:underline">

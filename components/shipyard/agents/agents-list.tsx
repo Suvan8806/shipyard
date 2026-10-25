@@ -13,6 +13,7 @@ import { Flap } from '../flap';
 import { useData, useNow } from '../use-data';
 import { ActivityFeed, SimulateTrafficButton } from '../activity/activity';
 import { useDeploy } from './use-deploy';
+import { HowItWorksGuide } from '../onboarding';
 
 const POLL_MS = 5000;
 /** The agent the stage demo opens (agents/DEMO.md). */
@@ -295,6 +296,7 @@ export function AgentsList() {
         </div>
         <SimulateTrafficButton onDone={() => void refetch()} />
       </header>
+      <HowItWorksGuide />
       {data && data.length > 0 && <CounterStrip agents={data} />}
       {data && <StaleNotice error={error} onRetry={refetch} />}
       <div className="grid gap-6 2xl:grid-cols-[minmax(0,1fr)_380px] 2xl:items-start">

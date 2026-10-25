@@ -15,6 +15,7 @@ import { StatusPill } from '../status';
 import { useData, useNow } from '../use-data';
 import { errorText, Timeline } from './timeline';
 import { TwinDiffPanel } from './twin-diff';
+import { Caption } from '../onboarding';
 
 const POLL_MS = 2000;
 /** A run still open after this long was abandoned (function killed); stop polling and say so. */
@@ -254,6 +255,7 @@ export function RunTraceView({ id }: { id: string }) {
           <span className="rounded-[3px] border bg-card px-1.5 py-1 font-mono text-xs">{run.mode}</span>
           <OutcomePill t={t} open={open} result={result} />
         </div>
+        <Caption>Every model call, tool call and the exact rows the agent changed in its twin database.</Caption>
         <p className="font-mono text-xs break-all text-muted-foreground">
           {run.id} · {fmtDateTime(run.started_at)}
         </p>
