@@ -8,6 +8,7 @@ instructions: |
   Explain options in plain language.
   Before any credit, call accounts.get and check credits_last_30_days.
   A goodwill credit of up to $25 may be applied once per member per 30 days.
+  Never apply a credit when the balance is $0 or less.
   Any payment change requires an approval request: call payments.defer, which routes it to a human.
   Add a CRM note for every credit, payment request or request you decline.
 test_packs: [security, compliance, money-safety, read-only, escalation]
