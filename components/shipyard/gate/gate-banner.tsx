@@ -2,7 +2,7 @@
 // Verdict banners for the gate board (design/direction.md 7.1 A) plus the running panel and the catch spotlight.
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowUpRight, CircleCheck, CircleDashed, Lock, OctagonX, RotateCcw, ShieldAlert, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import type { GateResult, ScenarioResultSummary } from '@/lib/types';
@@ -10,27 +10,53 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { deploy, errorMessage, rollback } from '../api';
 import { MiniDiff } from './mini-diff';
-import { isCriticalFail, shortName, type GateCounts } from './gate-model';
+import { isCriticalFail, shortName, verdicts, type GateCounts } from './gate-model';
 
 function servingSentence(current: number | null): string {
   return current ? `v${current} is still serving.` : 'Nothing was deployed.';
 }
 
-function BlockedBanner({ gate, counts, failing }: { gate: GateResult; counts: GateCounts; failing: ScenarioResultSummary | undefined }) {
-  const sub = [
-    `${counts.failed} of ${counts.total} tests failed`,
-    counts.criticalFailed ? `${counts.criticalFailed} critical` : null,
-    counts.errored ? `${counts.errored} hit infrastructure errors` : null,
-  ].filter(Boolean);
+function BlockedBanner({
+  gate,
+  counts,
+  failing,
+  landed,
+}: {
+  gate: GateResult;
+  counts: GateCounts;
+  failing: ScenarioResultSummary | undefined;
+  landed: boolean;
+}) {
+  // Blocked with zero failures means the gate could not verify the version (provider errors). Say that, not "0 failed".
+  const unverified = counts.failed === 0 && counts.errored > 0;
+  const sub = unverified
+    ? [
+        `${counts.errored} of ${counts.total} tests couldn't be graded (infrastructure errors)`,
+        'the gate only ships what it can verify',
+      ]
+    : [
+        `${counts.failed} of ${counts.total} ${counts.total === 1 ? 'test' : 'tests'} failed on the data`,
+        counts.criticalFailed ? `${counts.criticalFailed} critical` : null,
+        counts.errored ? `${counts.errored} not graded` : null,
+      ].filter(Boolean);
   return (
-    <div role="status" aria-live="polite" className="flex animate-banner-drop flex-col gap-4 rounded-lg bg-blocked-solid p-5 text-blocked-solid-foreground lg:flex-row lg:items-center">
-      <Lock className="size-7 shrink-0" strokeWidth={1.75} aria-hidden />
+    <div
+      role="status"
+      aria-live="polite"
+      className={cn(
+        'flex flex-col gap-4 rounded-lg bg-blocked-solid p-5 text-blocked-solid-foreground lg:flex-row lg:items-center',
+        landed && 'animate-banner-drop',
+      )}
+    >
+      <span className="grid size-12 shrink-0 place-items-center rounded-full border-2 border-blocked-solid-foreground/60" aria-hidden>
+        <Lock className="size-6" strokeWidth={2} />
+      </span>
       <div className="min-w-0 flex-1">
         <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <span className="status-word text-3xl xl:text-4xl">Blocked.</span>
+          <span className="status-word text-3xl sm:text-4xl">Blocked.</span>
           <span className="text-2xl font-medium">{servingSentence(gate.current_version)}</span>
         </p>
-        <p className="mt-1.5 text-sm opacity-85">{sub.join(' · ')}</p>
+        <p className="mt-1.5 text-sm opacity-90 sm:text-base">{sub.join(' · ')}</p>
       </div>
       <div className="flex flex-wrap gap-2">
         <Button
@@ -51,7 +77,7 @@ function BlockedBanner({ gate, counts, failing }: { gate: GateResult; counts: Ga
   );
 }
 
-function LiveBanner({ gate, counts }: { gate: GateResult; counts: GateCounts }) {
+function LiveBanner({ gate, counts, landed }: { gate: GateResult; counts: GateCounts; landed: boolean }) {
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const serving = gate.current_version === gate.version;
@@ -68,7 +94,11 @@ function LiveBanner({ gate, counts }: { gate: GateResult; counts: GateCounts }) 
     }
   };
   return (
-    <div role="status" aria-live="polite" className="flex animate-banner-drop flex-col gap-4 rounded-lg border border-pass-border bg-pass-subtle p-5 lg:flex-row lg:items-center">
+    <div
+      role="status"
+      aria-live="polite"
+      className={cn('flex flex-col gap-4 rounded-lg border border-pass-border bg-pass-subtle p-5 lg:flex-row lg:items-center', landed && 'animate-banner-drop')}
+    >
       <CircleCheck className="size-7 shrink-0 text-pass" strokeWidth={1.75} aria-hidden />
       <div className="min-w-0 flex-1">
         <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -98,7 +128,7 @@ function LiveBanner({ gate, counts }: { gate: GateResult; counts: GateCounts }) 
   );
 }
 
-function ErrorBanner({ gate }: { gate: GateResult }) {
+function ErrorBanner({ gate, landed }: { gate: GateResult; landed: boolean }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const again = async () => {
@@ -112,7 +142,11 @@ function ErrorBanner({ gate }: { gate: GateResult }) {
     }
   };
   return (
-    <div role="status" aria-live="polite" className="flex animate-banner-drop flex-col gap-4 rounded-lg border border-warn-border bg-warn-subtle p-5 lg:flex-row lg:items-center">
+    <div
+      role="status"
+      aria-live="polite"
+      className={cn('flex flex-col gap-4 rounded-lg border border-warn-border bg-warn-subtle p-5 lg:flex-row lg:items-center', landed && 'animate-banner-drop')}
+    >
       <TriangleAlert className="size-7 shrink-0 text-warn" strokeWidth={1.75} aria-hidden />
       <div className="min-w-0 flex-1">
         <p className="text-2xl font-medium">The gate couldn&apos;t finish. No version was changed.</p>
@@ -167,57 +201,109 @@ export function RunningPanel({ gate, counts, stalled }: { gate: GateResult; coun
   );
 }
 
-export function VerdictBanner({ gate, counts, results }: { gate: GateResult; counts: GateCounts; results: ScenarioResultSummary[] }) {
-  if (gate.status === 'running') return null;
-  if (gate.status === 'live') return <LiveBanner gate={gate} counts={counts} />;
-  if (gate.status === 'error') return <ErrorBanner gate={gate} />;
-  const failing = results.find(isCriticalFail) ?? results.find((r) => r.status === 'failed');
-  return <BlockedBanner gate={gate} counts={counts} failing={failing} />;
+/** True once the gate has left `running` while this page watched. Cold loads of a finished gate never animate. */
+function useLanded(status: GateResult['status']): boolean {
+  const sawRunning = useRef(status === 'running');
+  const [landed, setLanded] = useState(false);
+  useEffect(() => {
+    if (status === 'running') sawRunning.current = true;
+    else if (sawRunning.current) {
+      sawRunning.current = false;
+      setLanded(true);
+    }
+  }, [status]);
+  return landed;
 }
 
-/** The demo moment, blown up: reply check PASS next to end state FAIL, with the twin diff. */
+export function VerdictBanner({ gate, counts, results }: { gate: GateResult; counts: GateCounts; results: ScenarioResultSummary[] }) {
+  const landed = useLanded(gate.status);
+  if (gate.status === 'running') return null;
+  if (gate.status === 'live') return <LiveBanner gate={gate} counts={counts} landed={landed} />;
+  if (gate.status === 'error') return <ErrorBanner gate={gate} landed={landed} />;
+  const failing = results.find(isCriticalFail) ?? results.find((r) => r.status === 'failed');
+  return <BlockedBanner gate={gate} counts={counts} failing={failing} landed={landed} />;
+}
+
+/** Reply check verdict for the spotlight: Pass (muted, it is the misleading half), Fail, or Not graded. */
+function ReplyVerdict({ r }: { r: ScenarioResultSummary }) {
+  const v = verdicts(r);
+  if (v.reply === null) {
+    return (
+      <div className="status-word mt-1 flex items-center gap-1.5 text-xl text-muted-foreground">
+        <CircleDashed className="size-5" aria-hidden /> Not graded
+      </div>
+    );
+  }
+  return (
+    <div className={cn('status-word mt-1 flex items-center gap-1.5 text-xl', v.reply ? 'text-muted-foreground' : 'text-fail')}>
+      {v.reply ? <CircleCheck className="size-5" aria-hidden /> : <OctagonX className="size-5" aria-hidden />}
+      {v.reply ? 'Pass' : 'Fail'}
+    </div>
+  );
+}
+
+/**
+ * The demo moment, blown up: the end-state FAIL next to the reply check, with the proof (expected vs got, twin diff).
+ * Shown for the most telling failure: a reply-vs-data disagreement first, else the first critical failure.
+ */
 export function CatchSpotlight({ r, more }: { r: ScenarioResultSummary; more: number }) {
   const failed = r.assertions.filter((a) => !a.passed);
+  const v = verdicts(r);
+  const crit = isCriticalFail(r);
   return (
-    <section className="grid animate-banner-drop gap-5 rounded-lg border bg-card p-4 sm:p-5 lg:grid-cols-[1.1fr_1fr]" aria-label="What the gate caught">
-      <div className="flex min-w-0 flex-col gap-3">
-        <p className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-          <ShieldAlert className="size-4" aria-hidden /> Caught by the end-state check
+    <section
+      className="grid gap-5 overflow-hidden rounded-lg border border-fail-border bg-card lg:grid-cols-[1.1fr_1fr]"
+      aria-label="What the gate caught"
+    >
+      <div className="flex min-w-0 flex-col gap-3 p-4 sm:p-5 lg:pr-0">
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-medium text-muted-foreground">
+          <ShieldAlert className="size-4 text-fail" aria-hidden />
+          <span>Caught by the end-state check</span>
+          {crit && <span className="rounded-sm bg-fail-solid px-1.5 py-0.5 text-xs font-semibold text-fail-solid-foreground">Critical</span>}
           {more > 0 && <span>· {more} more below</span>}
         </p>
-        <h2 className="text-2xl font-semibold">{shortName(r)}</h2>
-        {r.final_reply && <p className="rounded-md bg-muted p-3 text-sm leading-relaxed">&ldquo;{r.final_reply}&rdquo;</p>}
+        <h2 className="text-2xl font-semibold break-words">{shortName(r)}</h2>
+        {r.final_reply && (
+          <p className="rounded-md bg-muted p-3 text-sm leading-relaxed">
+            <span className="field-label mb-1 block">The agent said</span>&ldquo;{r.final_reply}&rdquo;
+          </p>
+        )}
         <div className="grid grid-cols-2 gap-3">
-          <div className="rounded-md border border-fail-border bg-fail-subtle p-3">
-            <div className="field-label">End state</div>
-            <div className="status-word mt-1 flex items-center gap-1.5 text-3xl text-fail">
-              <OctagonX className="size-6" aria-hidden /> Fail
+          <div className="rounded-md bg-fail-solid p-3 text-fail-solid-foreground">
+            <div className="text-xs font-semibold tracking-[0.06em] uppercase opacity-90">End state</div>
+            <div className="status-word mt-1 flex items-center gap-1.5 text-3xl sm:text-4xl">
+              <OctagonX className="size-7" strokeWidth={2} aria-hidden /> Fail
             </div>
-            {failed[0]?.assertion.label && <div className="mt-1 text-sm font-semibold text-fail">{failed[0].assertion.label}</div>}
+            {failed[0]?.assertion.label && <div className="mt-1.5 text-sm font-semibold">{failed[0].assertion.label}</div>}
           </div>
-          <div className="rounded-md border p-3 text-muted-foreground">
+          <div className="rounded-md border p-3">
             <div className="field-label">Reply check</div>
-            <div className="status-word mt-1 flex items-center gap-1.5 text-xl">
-              <CircleCheck className="size-5" aria-hidden /> Pass
-            </div>
-            {r.reply_check && <div className="mt-1 line-clamp-2 text-xs">&ldquo;{r.reply_check.rationale}&rdquo;</div>}
+            <ReplyVerdict r={r} />
+            {r.reply_check?.rationale ? (
+              <div className="mt-1.5 line-clamp-2 text-xs text-muted-foreground">&ldquo;{r.reply_check.rationale}&rdquo;</div>
+            ) : (
+              v.reply === null && <div className="mt-1.5 text-xs text-muted-foreground">Informational only. Never decides the gate.</div>
+            )}
           </div>
         </div>
-        <p className="flex items-center gap-1.5 rounded-md border border-fail-border bg-fail-subtle px-3 py-2 text-base font-semibold text-fail">
-          <OctagonX className="size-4 shrink-0" aria-hidden /> A reply-only eval would have shipped this.
-        </p>
+        {v.disagree && (
+          <p className="flex items-center gap-1.5 rounded-md border border-fail-border bg-fail-subtle px-3 py-2 text-base font-semibold text-fail">
+            <OctagonX className="size-4 shrink-0" aria-hidden /> A reply-only eval would have shipped this.
+          </p>
+        )}
       </div>
-      <div className="flex min-w-0 flex-col gap-3">
+      <div className="flex min-w-0 flex-col gap-3 border-t bg-muted/40 p-4 sm:p-5 lg:border-t-0 lg:border-l">
         <p className="text-sm font-medium text-muted-foreground">What actually changed in the data</p>
         {failed.map((a, i) => (
-          <div key={i} className="rounded-md bg-muted p-3 font-mono text-sm">
-            <div><span className="text-muted-foreground">expected </span>{a.expected}</div>
-            <div><span className="text-muted-foreground">got&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span className="font-semibold text-fail">{a.actual}</span></div>
+          <div key={i} className="rounded-md border bg-card p-3 font-mono text-sm">
+            {a.assertion.label && <div className="mb-1 font-sans font-semibold">{a.assertion.label}</div>}
+            <div className="break-words"><span className="text-muted-foreground">expected </span>{a.expected}</div>
+            <div className="break-words"><span className="text-muted-foreground">got&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span className="font-semibold text-fail">{a.actual}</span></div>
           </div>
         ))}
         <MiniDiff diff={r.diff} max={6} className="text-sm" />
         {r.run_id && (
-          <Button variant="outline" className={cn('self-start')} nativeButton={false} render={<Link href={`/runs/${r.run_id}`} />}>
+          <Button variant="outline" className="self-start bg-card" nativeButton={false} render={<Link href={`/runs/${r.run_id}`} />}>
             Open run trace and twin diff <ArrowUpRight aria-hidden />
           </Button>
         )}

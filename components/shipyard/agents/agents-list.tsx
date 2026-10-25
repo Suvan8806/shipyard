@@ -25,16 +25,16 @@ function RowAction({ a }: { a: AgentSummary }) {
       <Link
         href={gateHref(a, runningVersion)}
         onClick={(e) => e.stopPropagation()}
-        className="inline-flex items-center gap-1 text-sm font-semibold whitespace-nowrap text-running hover:underline"
+        className="inline-flex items-center gap-1 text-sm font-semibold whitespace-nowrap text-primary hover:underline"
       >
-        Gate running <ArrowRight className="size-3.5" aria-hidden />
+        Watch gate <ArrowRight className="size-3.5" aria-hidden />
       </Link>
     );
   }
   return (
     <Button
       size="sm"
-      variant="ghost"
+      variant="outline"
       disabled={busy}
       onClick={(e) => {
         e.stopPropagation();
@@ -75,17 +75,18 @@ function CounterStrip({ agents }: { agents: AgentSummary[] }) {
   const running = agents.filter((a) => a.latest_status === 'running').length;
   const runs = agents.reduce((s, a) => s + a.runs_24h, 0);
   const items: { label: string; value: string; cls?: string }[] = [
-    { label: 'Serving', value: `${serving}/${agents.length}` },
-    { label: 'Gates running', value: String(running), cls: running > 0 ? 'text-running' : undefined },
-    { label: 'Deploys blocked', value: String(blocked), cls: blocked > 0 ? 'text-fail' : undefined },
-    { label: 'Live runs, 24h', value: runs.toLocaleString() },
+    { label: 'serving', value: `${serving}/${agents.length}` },
+    { label: running === 1 ? 'gate running' : 'gates running', value: String(running), cls: running > 0 ? 'text-running' : undefined },
+    { label: blocked === 1 ? 'deploy blocked' : 'deploys blocked', value: String(blocked), cls: blocked > 0 ? 'text-fail' : undefined },
+    { label: 'live runs in 24h', value: runs.toLocaleString() },
   ];
+  // One counters strip, same pattern as the gate board: numerals carry the weight, no metric cards.
   return (
-    <dl className="grid grid-cols-2 divide-border rounded-md border bg-card sm:grid-cols-4 sm:divide-x">
+    <dl className="flex flex-wrap items-baseline gap-x-6 gap-y-2 border-y py-3">
       {items.map((i) => (
-        <div key={i.label} className="flex flex-col gap-0.5 px-4 py-3">
-          <dt className="field-label">{i.label}</dt>
-          <dd className={`font-mono text-xl font-semibold tabular-nums ${i.cls ?? ''}`}>{i.value}</dd>
+        <div key={i.label} className="flex items-baseline gap-2">
+          <dt className="order-last text-sm text-muted-foreground">{i.label}</dt>
+          <dd className={`text-2xl font-bold tabular-nums ${i.cls ?? ''}`}>{i.value}</dd>
         </div>
       ))}
     </dl>

@@ -75,9 +75,9 @@ function PageSkeleton() {
         <Skeleton className="h-8 w-64" />
         <Skeleton className="h-4 w-80" />
       </div>
-      <div className="grid gap-6 xl:grid-cols-12">
-        <Skeleton className="h-[420px] xl:col-span-7" />
-        <Skeleton className="h-[420px] xl:col-span-5" />
+      <div className="grid gap-6 2xl:grid-cols-12">
+        <Skeleton className="h-[420px] 2xl:col-span-7" />
+        <Skeleton className="h-[420px] 2xl:col-span-5" />
       </div>
     </div>
   );
@@ -145,13 +145,13 @@ export function AgentPage({ name }: { name: string }) {
       <AgentHeader d={d} validation={validation} save={save} onScenariosChanged={() => void refetch()} />
       <StaleNotice error={error} onRetry={refetch} />
 
-      <div className="grid gap-6 xl:grid-cols-12">
-        <section className="flex min-w-0 flex-col gap-3 xl:col-span-7" aria-label="Spec">
+      <div className="grid gap-6 2xl:grid-cols-12">
+        <section className="flex min-w-0 flex-col gap-3 2xl:col-span-7" aria-label="Spec">
           <SpecEditor key={d.name} name={name} initial={d.draft_spec_yaml} initialValidation={d.validation} onStatus={setSpec} />
           <InheritedChips parts={parts} />
         </section>
 
-        <Tabs defaultValue="scenarios" className="min-w-0 xl:col-span-5">
+        <Tabs defaultValue="scenarios" className="min-w-0 2xl:col-span-5">
           <TabsList>
             <TabsTrigger value="scenarios">Scenarios</TabsTrigger>
             <TabsTrigger value="versions">Versions</TabsTrigger>

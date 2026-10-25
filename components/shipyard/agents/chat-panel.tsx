@@ -72,7 +72,7 @@ export function ChatPanel({ name, liveVersion }: { name: string; liveVersion: nu
               {t.content}
             </div>
             {t.run_id && (
-              <Link href={`/runs/${t.run_id}`} className="inline-flex items-center gap-1 font-mono text-[11px] text-muted-foreground hover:text-foreground">
+              <Link href={`/runs/${t.run_id}`} className="inline-flex items-center gap-1 font-mono text-2xs text-muted-foreground hover:text-foreground">
                 {fmtCost(t.cost_usd)} · trace <ArrowUpRight className="size-3" />
               </Link>
             )}

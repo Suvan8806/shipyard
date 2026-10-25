@@ -2,6 +2,14 @@ import type { Row, TwinDiff } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { fmtRowInline } from '../format';
 
+const MONEY_COLS = new Set(['amount', 'balance', 'monthly_payment', 'new_balance']);
+
+function val(col: string, v: unknown): string {
+  const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN;
+  if (MONEY_COLS.has(col) && Number.isFinite(n)) return `${n < 0 ? '−' : ''}$${Math.abs(n).toFixed(2)}`;
+  return String(v);
+}
+
 function rowKey(row: Row): string {
   return String(row.id ?? JSON.stringify(row));
 }
@@ -16,7 +24,7 @@ export function MiniDiff({ diff, max = 4, className }: { diff: TwinDiff | null; 
     for (const r of d.added) lines.push({ kind: '+', table, text: fmtRowInline(r), key: `${table}+${rowKey(r)}` });
     for (const r of d.removed) lines.push({ kind: '-', table, text: fmtRowInline(r), key: `${table}-${rowKey(r)}` });
     for (const c of d.changed) {
-      const cells = c.columns.map((col) => `${col} ${String(c.before[col])} → ${String(c.after[col])}`).join(', ');
+      const cells = c.columns.map((col) => `${col} ${val(col, c.before[col])} → ${val(col, c.after[col])}`).join(', ');
       lines.push({ kind: '~', table, text: `${String(c.after.id ?? '')} ${cells}`.trim(), key: `${table}~${rowKey(c.after)}` });
     }
   }

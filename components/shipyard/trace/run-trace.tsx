@@ -2,11 +2,12 @@
 // Run trace + twin diff (design/direction.md 7.2). Polls every 2 s while the run is in flight.
 import { useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, CircleCheck, SearchX, TriangleAlert } from 'lucide-react';
+import { ArrowLeft, CircleCheck, CircleDashed, OctagonX, SearchX, TriangleAlert } from 'lucide-react';
 import type { RunTrace } from '@/lib/contracts/api';
-import type { RunEvent } from '@/lib/types';
+import type { RunEvent, ScenarioResultSummary } from '@/lib/types';
 import { cn } from '@/lib/utils';
-import { ApiRequestError, getRun } from '../api';
+import { ApiRequestError, getGate, getRun } from '../api';
+import { verdicts } from '../gate/gate-model';
 import { fmtCost, fmtDateTime } from '../format';
 import { EmptyState, ErrorState, Skeleton, StaleNotice } from '../states';
 import { StatusPill } from '../status';
@@ -75,9 +76,10 @@ function ErrorBanner({ events }: { events: RunEvent[] }) {
   );
 }
 
-function OutcomePill({ t, open }: { t: RunTrace; open: boolean }) {
+function OutcomePill({ t, open, result }: { t: RunTrace; open: boolean; result: ScenarioResultSummary | undefined }) {
   if (open) return <StatusPill status="running" />;
   if (t.run.outcome === 'error') return <StatusPill status="error" />;
+  if (result?.status === 'failed' || result?.status === 'passed') return <StatusPill status={result.status} size="lg" />;
   if (t.run.ended_at === null) {
     return <span className="rounded-sm border bg-draft-subtle px-1.5 py-0.5 text-xs font-semibold text-draft">Never finished</span>;
   }
@@ -101,13 +103,65 @@ function Totals({ t, open }: { t: RunTrace; open: boolean }) {
   ];
   return (
     <dl className="grid grid-cols-2 gap-x-6 gap-y-3 rounded-md border bg-card px-4 py-3 sm:flex sm:flex-wrap sm:gap-x-10">
-      {items.map((x) => (
-        <div key={x.label} className="min-w-0">
+      {items.map((x, i) => (
+        <div key={x.label} className={cn('min-w-0', i === 0 && 'col-span-2 sm:col-auto')}>
           <dt className="field-label">{x.label}</dt>
           <dd className="font-mono text-base font-semibold tabular-nums">{x.value}</dd>
         </div>
       ))}
     </dl>
+  );
+}
+
+/** This run's scenario result on its gate (end state + reply check), so the trace carries its own verdict. */
+function useScenarioResult(t: RunTrace | null): ScenarioResultSummary | undefined {
+  const run = t?.run;
+  const enabled = !!run && run.mode === 'scenario' && run.version !== null && !!run.scenario;
+  const { data } = useData(enabled ? `gate-for-run:${run!.agent}@${run!.version}` : 'gate-for-run:none', () =>
+    enabled ? getGate(run!.agent, run!.version!) : Promise.resolve(null),
+  );
+  if (!enabled || !data) return undefined;
+  return data.results.find((r) => r.run_id === run!.id) ?? data.results.find((r) => r.scenario === run!.scenario);
+}
+
+/** The tag's verdict at trace scale: End state first and loud, Reply check second and quiet, then the proof. */
+function VerdictStrip({ r }: { r: ScenarioResultSummary }) {
+  if (r.status !== 'failed' && r.status !== 'passed') return null;
+  const v = verdicts(r);
+  const failed = r.assertions.filter((a) => !a.passed);
+  const fail = r.status === 'failed';
+  return (
+    <section aria-label="Verdict" className={cn('overflow-hidden rounded-md border bg-card', fail && 'border-fail-solid')}>
+      <div className={cn('flex flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3', fail ? 'bg-fail-solid text-fail-solid-foreground' : 'bg-pass-subtle')}>
+        <div className="flex items-baseline gap-3">
+          <span className={cn('text-xs font-semibold tracking-[0.06em] uppercase', fail ? 'opacity-90' : 'text-muted-foreground')}>End state</span>
+          <span className={cn('status-word inline-flex items-center gap-1.5 text-2xl', !fail && 'text-pass')}>
+            {fail ? <OctagonX className="size-6 self-center" strokeWidth={2} aria-hidden /> : <CircleCheck className="size-6 self-center" aria-hidden />}
+            {fail ? 'Fail' : 'Pass'}
+          </span>
+        </div>
+        <div className={cn('flex items-baseline gap-3', fail ? 'opacity-85' : 'text-muted-foreground')}>
+          <span className="text-xs font-semibold tracking-[0.06em] uppercase">Reply check</span>
+          <span className="inline-flex items-center gap-1 text-sm font-semibold">
+            {v.reply === null ? <CircleDashed className="size-3.5 self-center" aria-hidden /> : v.reply ? <CircleCheck className="size-3.5 self-center" aria-hidden /> : <OctagonX className="size-3.5 self-center" aria-hidden />}
+            {v.reply === null ? 'not graded' : v.reply ? 'pass' : 'fail'}
+          </span>
+        </div>
+        {v.disagree && <span className="text-sm font-semibold sm:ml-auto">A reply-only eval would have shipped this.</span>}
+      </div>
+      {failed.length > 0 && (
+        <ul className="grid gap-x-6 gap-y-2 px-4 py-3 sm:grid-cols-2">
+          {failed.map((a, i) => (
+            <li key={i} className="min-w-0 text-sm">
+              {a.assertion.label && <div className="font-semibold">{a.assertion.label}</div>}
+              <div className="font-mono text-[13px] break-words text-muted-foreground">
+                {a.expected} · got <span className="font-semibold text-fail">{a.actual}</span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
@@ -124,6 +178,7 @@ export function RunTraceView({ id }: { id: string }) {
   useEffect(() => {
     if (t) lastRef.current = t;
   }, [t]);
+  const result = useScenarioResult(t);
 
   if (!t && error instanceof ApiRequestError && error.status === 404) {
     return (
@@ -166,20 +221,24 @@ export function RunTraceView({ id }: { id: string }) {
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <h1 className="min-w-0 text-2xl font-bold tracking-tight text-balance break-words">
             {run.scenario ? (
-              <Link href={back} className="font-mono hover:underline">
-                {run.scenario}
+              <Link href={back} className="hover:underline">
+                {run.scenario.includes('/') && (
+                  <span className="font-normal text-muted-foreground">{run.scenario.slice(0, run.scenario.indexOf('/') + 1)}</span>
+                )}
+                {run.scenario.slice(run.scenario.indexOf('/') + 1)}
               </Link>
             ) : (
               'Live conversation'
             )}
           </h1>
           <span className="rounded-sm border bg-muted px-1.5 py-0.5 font-mono text-xs">{run.mode}</span>
-          <OutcomePill t={t} open={open} />
+          <OutcomePill t={t} open={open} result={result} />
         </div>
         <p className="font-mono text-xs break-all text-muted-foreground">
           {run.id} · {fmtDateTime(run.started_at)}
         </p>
         <StaleNotice error={error} onRetry={refetch} />
+        {result && <VerdictStrip r={result} />}
         <Totals t={t} open={open} />
         {run.outcome === 'error' && <ErrorBanner events={t.events} />}
         {showDiff && (

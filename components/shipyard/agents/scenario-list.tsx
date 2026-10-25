@@ -55,7 +55,7 @@ export function ScenarioItem({ s, className, as: Tag = 'li' }: { s: ParsedScenar
         )}
       </div>
       {s.description && <p className="mt-0.5 text-sm text-muted-foreground">{s.description}</p>}
-      {s.conversation[0] && <p className="mt-1.5 rounded-sm bg-muted px-2 py-1 text-sm italic">“{s.conversation[0]}”</p>}
+      {s.conversation[0] && <p className="mt-1.5 rounded-sm bg-muted px-2 py-1 text-sm">“{s.conversation[0]}”</p>}
       <ul className="mt-2 flex flex-wrap gap-1.5">
         {s.assert.map((a, i) => (
           <li
