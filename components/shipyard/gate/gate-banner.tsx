@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowUpRight, CircleCheck, CircleDashed, Lock, OctagonX, RotateCcw, ShieldAlert, TriangleAlert } from 'lucide-react';
+import { ArrowLeft, ArrowUpRight, CircleCheck, CircleDashed, GitCompare, Lock, OctagonX, RotateCcw, ShieldAlert, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import type { GateResult, ScenarioResultSummary } from '@/lib/types';
 import { Button } from '@/components/ui/button';
@@ -72,6 +72,16 @@ function BlockedBanner({
         >
           <ArrowLeft aria-hidden /> Back to editor
         </Button>
+        {gate.current_version !== null && gate.current_version !== gate.version && (
+          <Button
+            variant="outline"
+            className="border-blocked-solid-foreground/60 bg-transparent text-blocked-solid-foreground hover:bg-blocked-solid-foreground/10 hover:text-blocked-solid-foreground"
+            nativeButton={false}
+            render={<Link href={`/agents/${gate.agent}/diff?from=${gate.current_version}&to=${gate.version}`} />}
+          >
+            <GitCompare aria-hidden /> What changed vs v{gate.current_version}?
+          </Button>
+        )}
         {failing?.run_id && (
           <Button className="bg-blocked-solid-foreground text-blocked-solid hover:bg-blocked-solid-foreground/90" nativeButton={false} render={<Link href={`/runs/${failing.run_id}`} />}>
             View failing run <ArrowUpRight aria-hidden />

@@ -23,6 +23,8 @@ import type {
 } from '@/lib/contracts/api';
 import type { ChatMessage, GateResult } from '@/lib/types';
 import * as mock from './mock';
+import * as stressMock from './stress/mock-stress';
+import type { StressRequest, StressResult, StressStarted, StressSummary, VersionDiff } from './stress/contract';
 
 export const USE_MOCKS = process.env.NEXT_PUBLIC_USE_MOCKS === '1';
 /** Set when local dev should read a remote deployment's API (see the header comment). */
@@ -234,4 +236,45 @@ export function simulateTraffic(count = 5): Promise<SimulateResponse> {
 
 export function resetLive(): Promise<{ ok: true }> {
   return USE_MOCKS ? mocked(() => ({ ok: true as const })) : request(withAdminToken('/api/admin/reset-live'), { method: 'POST' });
+}
+
+// ---------- stress lab + version diff (lib/contracts/stress.ts) ----------
+/** Mock wrapper that maps budget refusals to 402 like the real route. */
+async function mockedStress<T>(fn: () => T, delay = MOCK_DELAY_MS): Promise<T> {
+  try {
+    return await mocked(fn, delay);
+  } catch (e) {
+    if (e instanceof ApiRequestError && e.code === 'budget_exceeded') throw new ApiRequestError(e.code, e.message, 402);
+    throw e;
+  }
+}
+
+/** Budget from GET /api/health ({ spend_usd, budget_usd }); spend_usd is null when the server can't read it. */
+export async function getBudget(): Promise<{ spend_usd: number | null; budget_usd: number }> {
+  if (USE_MOCKS) return mocked(stressMock.getBudget, 80);
+  const h = await request<{ spend_usd?: number | null; budget_usd?: number }>('/api/health');
+  return { spend_usd: h.spend_usd ?? null, budget_usd: h.budget_usd ?? 0 };
+}
+
+/** Starts a dry-run stress job. `tests` only feeds the mock's cost check; the server counts its own. */
+export function startStress(name: string, req: StressRequest, tests = 46): Promise<StressStarted> {
+  return USE_MOCKS
+    ? mockedStress(() => stressMock.startStress(name, req, tests), 400)
+    : request(`/api/agents/${enc(name)}/stress`, { method: 'POST', body: req });
+}
+
+export function listStress(name: string): Promise<StressSummary[]> {
+  return USE_MOCKS ? mockedStress(() => stressMock.listStress(name), 150) : request(`/api/agents/${enc(name)}/stress`);
+}
+
+export function getStress(name: string, id: string): Promise<StressResult> {
+  return USE_MOCKS
+    ? mockedStress(() => stressMock.getStress(name, id), 120)
+    : request(`/api/agents/${enc(name)}/stress/${enc(id)}`);
+}
+
+export function getDiff(name: string, from: number, to: number): Promise<VersionDiff> {
+  return USE_MOCKS
+    ? mockedStress(() => stressMock.getDiff(name, from, to), 200)
+    : request(`/api/agents/${enc(name)}/diff?from=${from}&to=${to}`);
 }

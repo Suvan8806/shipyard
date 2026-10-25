@@ -1,0 +1,85 @@
+name: Shipyard gate
+description: >
+  Validate an agent spec locally, push it to Shipyard, deploy it through the gate (every test on a throwaway
+  twin database) and fail the job when the gate blocks. Writes a markdown summary of failures to the job page.
+inputs:
+  api-url:
+    description: Shipyard base URL
+    required: false
+    default: https://shipyard-silk-beta.vercel.app
+  agent:
+    description: Agent name (must match `name:` in the spec)
+    required: true
+  spec-path:
+    description: Path to the agent's spec.yaml
+    required: true
+  scenarios-dir:
+    description: Optional scenarios folder, validated locally before pushing (the server keeps its own scenario set)
+    required: false
+    default: ''
+  admin-token:
+    description: SHIPYARD_ADMIN_TOKEN for write routes (pass a secret)
+    required: false
+    default: ''
+  timeout:
+    description: Seconds to wait for the gate verdict
+    required: false
+    default: '600'
+outputs:
+  verdict:
+    description: live | blocked | error
+    value: ${{ steps.gate.outputs.verdict }}
+  exit-code:
+    description: 0 live, 1 blocked, 2 error
+    value: ${{ steps.gate.outputs.exit-code }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 22
+        cache: npm
+
+    - name: Install CLI dependencies
+      shell: bash
+      run: |
+        if [ ! -d node_modules ]; then npm ci --no-audit --no-fund; fi
+
+    - name: Validate spec locally (free, no model calls)
+      shell: bash
+      env:
+        SHIPYARD_API_URL: ${{ inputs.api-url }}
+        NO_COLOR: '1'
+        AGENT: ${{ inputs.agent }}
+        SPEC: ${{ inputs.spec-path }}
+        SCENARIOS: ${{ inputs.scenarios-dir }}
+      run: |
+        args=(validate "$AGENT" --file "$SPEC")
+        if [ -n "$SCENARIOS" ]; then args+=(--scenarios-dir "$SCENARIOS"); fi
+        npx tsx cli/shipyard.ts "${args[@]}"
+
+    - name: Push spec and run the gate
+      id: gate
+      shell: bash
+      env:
+        SHIPYARD_API_URL: ${{ inputs.api-url }}
+        SHIPYARD_ADMIN_TOKEN: ${{ inputs.admin-token }}
+        NO_COLOR: '1'
+        AGENT: ${{ inputs.agent }}
+        SPEC: ${{ inputs.spec-path }}
+        TIMEOUT: ${{ inputs.timeout }}
+      run: |
+        set +e
+        npx tsx cli/shipyard.ts deploy "$AGENT" --file "$SPEC" --ci --timeout "$TIMEOUT"
+        code=$?
+        set -e
+        case "$code" in
+          0) verdict=live ;;
+          1) verdict=blocked ;;
+          *) verdict=error ;;
+        esac
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+        echo "verdict=$verdict" >> "$GITHUB_OUTPUT"
+        if [ "$code" = "1" ]; then echo "::error title=Shipyard gate blocked::$AGENT did not ship; see the job summary for failing tests"; fi
+        if [ "$code" -gt 1 ]; then echo "::error title=Shipyard gate error::the gate could not finish for $AGENT"; fi
+        exit "$code"

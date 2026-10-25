@@ -1,0 +1,69 @@
+# Example: gate every agent whose folder changed in a PR. Each gate run calls paid models (~$0.28 per
+# 46-test deploy), so this is OFF by default: it only runs on manual dispatch, or on PRs once the repo
+# variable SHIPYARD_GATE_ENABLED is set to "true" (Settings -> Secrets and variables -> Actions -> Variables).
+name: Shipyard gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      agent:
+        description: Agent folder under agents/ to gate
+        required: true
+        default: support-agent
+  pull_request:
+    paths:
+      - 'agents/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: shipyard-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  detect:
+    if: github.event_name == 'workflow_dispatch' || vars.SHIPYARD_GATE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      agents: ${{ steps.changed.outputs.agents }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: changed
+        shell: bash
+        env:
+          INPUT_AGENT: ${{ github.event.inputs.agent }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ -n "$INPUT_AGENT" ]; then
+            list="[\"$INPUT_AGENT\"]"
+          else
+            list=$(git diff --name-only "$BASE_SHA"...HEAD -- agents/ \
+              | awk -F/ 'NF>2 && $2 !~ /^_/ {print $2}' | sort -u \
+              | while read -r a; do [ -f "agents/$a/spec.yaml" ] && echo "$a"; done \
+              | head -n 5 | jq -R . | jq -cs .)
+          fi
+          echo "agents=${list:-[]}" >> "$GITHUB_OUTPUT"
+          echo "Agents to gate: ${list:-[]}"
+
+  gate:
+    needs: detect
+    if: needs.detect.outputs.agents != '[]' && needs.detect.outputs.agents != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        agent: ${{ fromJSON(needs.detect.outputs.agents) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/shipyard-gate
+        with:
+          api-url: ${{ vars.SHIPYARD_API_URL || 'https://shipyard-silk-beta.vercel.app' }}
+          agent: ${{ matrix.agent }}
+          spec-path: agents/${{ matrix.agent }}/spec.yaml
+          scenarios-dir: agents/${{ matrix.agent }}/scenarios
+          admin-token: ${{ secrets.SHIPYARD_ADMIN_TOKEN }}

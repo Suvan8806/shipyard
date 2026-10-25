@@ -2,7 +2,8 @@
 // -> save. Shared by the in-process gate (runGate) and the fan-out worker (/api/internal/gate/run-scenario).
 import type { LanguageModel } from 'ai';
 import * as repo from '../platform/repo';
-import { runAgent } from '../runtime/runner';
+import { createRunner, runAgent } from '../runtime/runner';
+import { resolveModel } from '../runtime/model';
 import { createTwin } from '../twins/twin';
 import { diffSnapshots } from '../twins/diff';
 import type {
@@ -22,6 +23,20 @@ import { judgeReply, replyJudgeEnabled } from './reply-check';
 export interface GateOptions {
   /** Tests inject the AI SDK mock model; passed to runAgent (and the judge / paraphraser unless they're off). */
   modelOverride?: LanguageModel;
+  /** Stress model matrix: run on exactly this model string (no fallback chain), priced as that model. */
+  modelId?: string;
+  /** Stress dry runs: the runs.version to record instead of ctx.version (null keeps negative ids out of run lists). */
+  runVersion?: number | null;
+}
+
+/** runAgent, or a runner pinned to one exact model (its cost is priced as that model, unlike modelOverride). */
+function runnerFor(opts: GateOptions): typeof runAgent {
+  if (!opts.modelId || opts.modelOverride) return runAgent;
+  const chain = [{ id: opts.modelId, model: resolveModel(opts.modelId) }];
+  return createRunner(
+    { createRun: repo.createRun, appendEvent: repo.appendEvent, finishRun: repo.finishRun, totalSpendUsd: repo.totalSpendUsd },
+    { chain },
+  );
 }
 
 export interface AttemptResult {
@@ -94,9 +109,9 @@ export async function runAttempt(
     assertTwinDb(twin.db);
     await twin.seed(scenario.setup ?? {});
     before = await twin.snapshot();
-    const r = await runAgent({
+    const r = await runnerFor(opts)({
       spec,
-      version,
+      version: opts.runVersion !== undefined ? opts.runVersion : version,
       messages: scenario.conversation.map((t) => ({ role: 'user' as const, content: t.user })),
       db: twin.db,
       mode: 'scenario',

@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { ArrowLeft, ArrowRight, CircleDashed, Loader2, Rocket } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CircleDashed, FlaskConical, Loader2, Rocket } from 'lucide-react';
 import type { AgentDetail } from '@/lib/contracts/api';
 import type { ValidationResult } from '@/lib/types';
 import { Button } from '@/components/ui/button';
@@ -93,6 +93,9 @@ export function AgentHeader({
                 Watch v{running.version} gate <ArrowRight className="size-3.5" aria-hidden />
               </Link>
             )}
+            <Button variant="outline" nativeButton={false} render={<Link href={`/agents/${enc}/stress`} />}>
+              <FlaskConical aria-hidden /> Stress lab
+            </Button>
             <GenerateTestsDialog name={d.name} onAccepted={onScenariosChanged} />
             <Button
               onClick={() => void start()}
