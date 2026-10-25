@@ -10,7 +10,7 @@
   claude mcp add --transport http shipyard https://shipyard-silk-beta.vercel.app/api/mcp/mcp
   ```
 
-![Gate board: a deploy blocked because the agent drove a balance to -$25](design/shots/after/gate-1440x900.png)
+![Gate board: a deploy blocked because the agent drove a balance to -$25](design/shots/final/gate-v2-1440x900.png)
 
 ---
 
@@ -46,11 +46,11 @@ Every number below came from production with the real model.
 
 | Agent editor (18-line spec, v3 live, v4 blocked) | Run trace + twin diff |
 |---|---|
-| ![Agent editor](design/shots/after/agent-1440x900.png) | ![Run trace](design/shots/after/run-1440x900.png) |
+| ![Agent editor](design/shots/final/agent-1440x900.png) | ![Run trace](design/shots/final/run-1440x900.png) |
 
 | Shared library (tools, policies, packs) | Agents across six teams |
 |---|---|
-| ![Library](design/shots/after/library-1440x900.png) | ![Agents list](design/shots/after/agents-1440x900.png) |
+| ![Library](design/shots/final/library-1440x900.png) | ![Agents list](design/shots/final/agents-1440x900.png) |
 
 > We captured the gate-board screenshot at the top during development. That run hit free-tier rate limits, so some tests show as "not graded" (infrastructure errors are never counted as passes). The final paid runs graded all 46 tests.
 
