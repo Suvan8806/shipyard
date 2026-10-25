@@ -63,7 +63,7 @@ export function SpecDiff({ diff, fileName }: { diff: VersionDiff; fileName: stri
   const removed = diff.spec_diff.filter((l) => l.kind === 'del').length;
   const chunks = foldDiff(diff.spec_diff);
   return (
-    <section aria-labelledby="spec-diff" className="flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card">
+    <section aria-labelledby="spec-diff" className="flex min-w-0 flex-col overflow-hidden panel">
       <header className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b px-3 py-2">
         <h2 id="spec-diff" className="font-mono text-[13px] font-semibold">
           {fileName}

@@ -50,13 +50,13 @@ export function LaunchCard({
   };
 
   return (
-    <article aria-labelledby={`launch-${mode}`} className="flex min-w-0 flex-col gap-4 rounded-lg border bg-card p-4 sm:p-5">
+    <article aria-labelledby={`launch-${mode}`} className="flex min-w-0 flex-col gap-4 panel p-4 sm:p-5">
       <header className="flex items-start gap-3">
         <span className="grid size-9 shrink-0 place-items-center rounded-md border bg-muted text-foreground">
           <meta.Icon className="size-5" strokeWidth={1.75} aria-hidden />
         </span>
         <div className="min-w-0">
-          <h2 id={`launch-${mode}`} className="text-lg font-semibold">
+          <h2 id={`launch-${mode}`} className="board-title text-2xl">
             {meta.label}
           </h2>
           <p className="text-sm text-muted-foreground">{meta.blurb}</p>

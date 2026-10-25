@@ -61,7 +61,7 @@ export function StressResultPage({ name, id }: { name: string; id: string }) {
           <span className="rounded-sm border px-1.5 py-0.5 text-xs font-semibold">Dry run</span>
         </p>
         <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
-          <h1 role="status" aria-live="polite" className="text-2xl font-bold tracking-tight text-balance sm:text-3xl">
+          <h1 role="status" aria-live="polite" className="board-title text-3xl sm:text-4xl">
             {running ? (
               <span className="inline-flex items-center gap-2 text-running">
                 <CircleDashed className="size-7 animate-running-ring" strokeWidth={1.75} aria-hidden />

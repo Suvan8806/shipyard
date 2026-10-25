@@ -68,7 +68,7 @@ function Row({ s, total }: { s: ReliabilityScenario; total: number }) {
   return (
     <li
       className={cn(
-        'flex min-w-0 flex-col gap-2 rounded-md border bg-card px-3 py-2.5',
+        'flex min-w-0 flex-col gap-2 panel px-3 py-2.5',
         v === 'flaky' && 'border-warn-border',
         v === 'failed' && 'border-fail-border',
       )}
@@ -86,7 +86,7 @@ function Row({ s, total }: { s: ReliabilityScenario; total: number }) {
         {s.scenario}
       </p>
       {loud && runHref && (
-        <Link href={`/runs/${runHref}`} className="inline-flex w-fit items-center gap-1 text-sm font-medium text-primary hover:underline">
+        <Link href={`/runs/${runHref}`} className="inline-flex w-fit items-center gap-1 text-sm font-bold text-link hover:underline">
           View failing run <ArrowUpRight className="size-3.5" aria-hidden />
         </Link>
       )}

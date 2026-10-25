@@ -7,6 +7,7 @@ import type { ReactNode } from 'react';
 import { ArrowLeft, RotateCw, SearchX, TriangleAlert, WifiOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Flap } from './flap';
 import { cn } from '@/lib/utils';
 import { ApiRequestError } from './api';
 
@@ -32,18 +33,18 @@ export function NotFoundState({
   backLabel?: string;
 }) {
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 py-6">
-      <p className="font-mono text-sm font-semibold tracking-wide text-muted-foreground">404</p>
-      <div className="flex items-start gap-3">
-        <SearchX className="mt-1 size-6 shrink-0 text-muted-foreground" aria-hidden />
-        <div className="min-w-0">
-          <h1 className="text-2xl font-bold tracking-tight text-balance">{title}</h1>
-          {children && <p className="mt-1 max-w-prose text-muted-foreground">{children}</p>}
-        </div>
+    <div className="board mx-auto flex w-full max-w-3xl flex-col gap-5 overflow-hidden p-6 sm:p-8">
+      <div className="flex flex-wrap items-center gap-4">
+        <Flap text="404" tone="signal" animate className="text-5xl" label="Error 404" />
+        <SearchX className="size-8 shrink-0 text-board-muted" aria-hidden />
+      </div>
+      <div className="min-w-0">
+        <h1 className="board-title text-3xl text-board-ink sm:text-4xl">{title}</h1>
+        {children && <p className="mt-2 max-w-prose text-lg text-board-muted [&_.text-foreground]:text-board-ink">{children}</p>}
       </div>
       <Link
         href={backHref}
-        className="inline-flex items-center gap-1 self-start rounded-md border bg-card px-3 py-1.5 text-sm font-semibold hover:border-primary hover:text-primary"
+        className="inline-flex items-center gap-1.5 self-start rounded-md bg-signal px-4 py-2.5 text-sm font-bold text-signal-foreground transition-colors hover:bg-[color-mix(in_oklch,var(--signal),black_8%)] focus-visible:ring-2 focus-visible:ring-signal focus-visible:ring-offset-2 focus-visible:ring-offset-board focus-visible:outline-none"
       >
         <ArrowLeft className="size-4" aria-hidden /> {backLabel}
       </Link>
@@ -67,17 +68,17 @@ export function ErrorState({
   return (
     <div
       role="alert"
-      className={cn('flex flex-col items-start gap-3 rounded-md border border-warn-border bg-warn-subtle p-5', className)}
+      className={cn('panel flex flex-col items-start gap-3 border-warn-border p-5', className)}
     >
       <div className="flex items-start gap-3">
-        <Icon className="mt-0.5 size-5 shrink-0 text-warn" aria-hidden />
+        <span className="grid size-10 shrink-0 place-items-center rounded-md bg-warn-solid text-warn-solid-foreground"><Icon className="size-5" aria-hidden /></span>
         <div className="min-w-0">
-          <p className="font-semibold text-foreground">{title}</p>
-          <p className="mt-0.5 break-words text-sm text-muted-foreground">{error.message}</p>
+          <p className="board-title text-2xl text-foreground">{title}</p>
+          <p className="mt-1 font-mono text-sm break-words text-muted-foreground">{error.message}</p>
         </div>
       </div>
       {onRetry && !notFound && (
-        <Button variant="outline" size="sm" onClick={() => void onRetry()}>
+        <Button onClick={() => void onRetry()}>
           <RotateCw aria-hidden /> Retry
         </Button>
       )}
@@ -115,9 +116,9 @@ export function EmptyState({
   className?: string;
 }) {
   return (
-    <div className={cn('flex flex-col items-center gap-2 rounded-md border border-dashed px-6 py-10 text-center', className)}>
-      {icon && <div className="text-muted-foreground [&_svg]:size-6">{icon}</div>}
-      <p className="font-semibold text-balance">{title}</p>
+    <div className={cn('flex flex-col items-center gap-2 rounded-md border-2 border-dashed border-input bg-card/60 px-6 py-10 text-center', className)}>
+      {icon && <div className="mb-1 grid size-12 place-items-center rounded-md bg-board text-signal [&_svg]:size-6">{icon}</div>}
+      <p className="board-title text-2xl">{title}</p>
       {children && <div className="max-w-prose text-sm text-muted-foreground">{children}</div>}
       {action && <div className="mt-2">{action}</div>}
     </div>
@@ -127,7 +128,7 @@ export function EmptyState({
 /** Table-shaped skeleton: `rows` lines of `cols` cells. */
 export function TableSkeleton({ rows = 6, cols = 5, className }: { rows?: number; cols?: number; className?: string }) {
   return (
-    <div className={cn('flex flex-col gap-2 rounded-md border bg-card p-4', className)} aria-busy="true" aria-label="Loading">
+    <div className={cn('panel flex flex-col gap-2 p-4', className)} aria-busy="true" aria-label="Loading">
       {Array.from({ length: rows }, (_, r) => (
         <div key={r} className="flex gap-4">
           {Array.from({ length: cols }, (_, c) => (

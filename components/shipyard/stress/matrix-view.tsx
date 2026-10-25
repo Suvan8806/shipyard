@@ -35,7 +35,7 @@ function Column({ m, winner }: { m: MatrixModel; winner: boolean }) {
   return (
     <article
       aria-label={shortModel(m.model)}
-      className={cn('flex min-w-0 flex-col gap-4 rounded-lg border bg-card p-4', winner && 'border-foreground ring-1 ring-foreground')}
+      className={cn('flex min-w-0 flex-col gap-4 panel p-4', winner && 'border-foreground ring-1 ring-foreground')}
     >
       <header className="flex flex-col gap-1">
         <div className="flex flex-wrap items-center gap-2">
