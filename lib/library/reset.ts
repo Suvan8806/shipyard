@@ -75,10 +75,48 @@ export const DEMO_PENDING_APPROVALS: { type: string; account_id: string; details
   },
 ];
 
+/**
+ * The 8 seeded agents (one folder each under agents/). Their history is never touched by a reset. Any other agent
+ * (e.g. payment-reminder-agent created live through the MCP during the demo) is purged with all of its versions,
+ * gate results, runs, run events and audit rows, so the next walk-through can create it fresh. Keep in sync with
+ * the agents/ folders (tests/library/reset.test.ts checks).
+ */
+export const SEEDED_AGENTS = [
+  'autopay-setup-agent',
+  'branch-hours-agent',
+  'card-dispute-agent',
+  'collections-agent',
+  'fee-explainer-agent',
+  'fraud-alert-agent',
+  'loan-status-agent',
+  'support-agent',
+] as const;
+
 const q = (v: string) => `'${v.replace(/'/g, "''")}'`;
 
+/** Statements that delete every non-seeded agent and everything it produced (idempotent). */
+export function purgeUnseededStatements(): string[] {
+  const keep = SEEDED_AGENTS.map(q).join(', ');
+  const doomed = `select name from public.agents where name not in (${keep})`;
+  return [
+    // run_events cascade from runs
+    `delete from public.runs where agent in (${doomed})`,
+    `delete from public.scenario_results where agent in (${doomed})`,
+    `delete from public.audit_log where target in (${doomed})`,
+    // agent_versions cascade from agents
+    `delete from public.agents where name not in (${keep})`,
+  ];
+}
+
 /** The reset as plain idempotent SQL statements (used by resetLive and by `scripts/reset-live.ts --sql`). */
-export function resetLiveStatements(opts: { keepDemoApprovals?: boolean } = {}): string[] {
+export interface ResetOptions {
+  /** Re-add the 2 demo pending approvals (default true). */
+  keepDemoApprovals?: boolean;
+  /** Delete agents not in SEEDED_AGENTS, with their versions/results/runs/audit rows (default true). */
+  purgeUnseeded?: boolean;
+}
+
+export function resetLiveStatements(opts: ResetOptions = {}): string[] {
   const keep = opts.keepDemoApprovals ?? true;
   const ids = CANONICAL_ACCOUNTS.map((a) => q(a.id)).join(', ');
   const values = CANONICAL_ACCOUNTS.map(
@@ -92,6 +130,7 @@ export function resetLiveStatements(opts: { keepDemoApprovals?: boolean } = {}):
       '  monthly_payment = excluded.monthly_payment, status = excluded.status',
     `update public.agents set draft_spec_yaml = ${q(GOOD_SUPPORT_SPEC)}, updated_at = now() where name = 'support-agent'`,
   ];
+  if (opts.purgeUnseeded ?? true) stmts.push(...purgeUnseededStatements());
   if (keep) {
     for (const a of DEMO_PENDING_APPROVALS) {
       stmts.push(
@@ -106,13 +145,19 @@ export function resetLiveStatements(opts: { keepDemoApprovals?: boolean } = {}):
 
 /**
  * Truncates sys credits/deferrals/crm_notes/email_outbox/approvals, restores the 20 canonical accounts,
- * resets support-agent's draft to the good spec, and re-adds the 2 demo pending approvals.
- * Versions, runs and the audit log are left intact.
+ * resets support-agent's draft to the good spec, re-adds the 2 demo pending approvals, and purges agents created
+ * live (anything not in SEEDED_AGENTS). The seeded agents' versions, runs and audit rows are left intact.
  */
-export async function resetLive(opts: { keepDemoApprovals?: boolean } = {}): Promise<{ ok: true }> {
+export async function resetLive(opts: ResetOptions = {}): Promise<{ ok: true; purged_agents: string[] }> {
   const stmts = resetLiveStatements(opts);
+  const keep = [...SEEDED_AGENTS];
+  let purged: string[] = [];
   await sql.begin(async (tx) => {
+    if (opts.purgeUnseeded ?? true) {
+      const rows = await tx`select name from public.agents where not (name = any(${keep}))`;
+      purged = rows.map((r) => String(r.name));
+    }
     for (const s of stmts) await tx.unsafe(s);
   });
-  return { ok: true };
+  return { ok: true, purged_agents: purged };
 }

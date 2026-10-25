@@ -7,7 +7,7 @@ import type { RunAgentFn, RunInput, RunResult, EventType } from '../types';
 import { PROFILES } from '../library/profiles';
 import { getTool, toWireName } from '../library';
 import { createResilientModel, resilientFor, type ChainModel, type ResilientOptions, type ResilientState } from './model';
-import { assertBudget, isBudgetExceeded } from './budget';
+import { assertBudget, BudgetExceededError, budgetUsd, currentSpendUsd, isBudgetExceeded } from './budget';
 import { costOf } from './cost';
 import { buildSystemPrompt } from './prompt';
 import { checkPolicy, newRunState } from './policy';
@@ -45,6 +45,21 @@ export interface RunnerOptions {
   chain?: ChainModel[];
   /** Overrides the backoff sleep (tests). */
   sleep?: (ms: number) => Promise<void>;
+  /** Epoch ms the run must finish by (e.g. the route's maxDuration); time budget = min(RUN_BUDGET_MS, deadline - now). */
+  deadline?: number;
+}
+
+/** Spend check between turns: cached platform spend plus this run's spend so far. Read errors let it through. */
+async function assertTurnBudget(repo: RunnerRepo, runCost: number): Promise<void> {
+  if (!repo.totalSpendUsd) return;
+  let spend: number;
+  try {
+    spend = await currentSpendUsd({ totalSpendUsd: () => repo.totalSpendUsd!() });
+  } catch {
+    return;
+  }
+  const budget = budgetUsd();
+  if (spend + runCost >= budget) throw new BudgetExceededError(spend + runCost, budget);
 }
 
 /** Splits chat history into turns: each user message not yet followed by an assistant reply needs generation. */
@@ -129,7 +144,7 @@ export function createRunner(repo: RunnerRepo, opts: RunnerOptions = {}): RunAge
 
     const instructions = buildSystemPrompt(spec);
     const resilience: ResilientOptions = {
-      deadline: Date.now() + RUN_BUDGET_MS,
+      deadline: Date.now() + Math.max(0, Math.min(RUN_BUDGET_MS, (opts.deadline ?? Infinity) - Date.now())),
       sleep: opts.sleep,
       onThrottle: (t) => {
         void log({
@@ -166,9 +181,12 @@ export function createRunner(repo: RunnerRepo, opts: RunnerOptions = {}): RunAge
 
     try {
       if (repo.totalSpendUsd) await assertBudget({ totalSpendUsd: () => repo.totalSpendUsd!() });
+      let generated = 0;
       for (const turn of plan(input.messages)) {
         history.push({ role: turn.role, content: turn.content });
         if (!turn.generate) continue;
+        // Multi-turn runs (scenarios) re-check the cap before each further turn, so they stop once it is hit.
+        if (generated++ > 0) await assertTurnBudget(repo, totals.cost);
 
         let last = Date.now();
         const result = await generateText({
@@ -182,6 +200,8 @@ export function createRunner(repo: RunnerRepo, opts: RunnerOptions = {}): RunAge
           // Throttles (429/503) are handled per call inside the resilient model (backoff + fallback chain);
           // this only retries other transient failures.
           maxRetries: 2,
+          // Hard stop at the caller's deadline, so the run still reaches finishRun before the route is killed.
+          ...(opts.deadline ? { abortSignal: AbortSignal.timeout(Math.max(1, opts.deadline - Date.now())) } : {}),
           onStepEnd: (step) => {
             const now = Date.now();
             const tin = step.usage.inputTokens ?? 0;
@@ -250,3 +270,8 @@ async function defaultRepo(): Promise<RunnerRepo> {
 
 /** The production runner (writes runs + run_events to Supabase via lib/platform/repo). */
 export const runAgent: RunAgentFn = async (input) => createRunner(await defaultRepo())(input);
+
+/** The production runner with options (chat passes a deadline so the run finishes before the route's maxDuration). */
+export async function runAgentWith(input: RunInput, opts: RunnerOptions): Promise<RunResult> {
+  return createRunner(await defaultRepo(), opts)(input);
+}

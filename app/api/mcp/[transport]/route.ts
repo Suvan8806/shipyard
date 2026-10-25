@@ -5,6 +5,7 @@ import { createMcpHandler, getPublicOrigin, withMcpAuth } from 'mcp-handler';
 import { z } from 'zod';
 import { BLOCKS, PROFILES, listTools } from '@/lib/library';
 import { PACKS } from '@/lib/library/packs-loader';
+import { SYS_TABLES } from '@/lib/sysdb/schema';
 import { getLibrary, listTestPacks } from '@/lib/services/library';
 import { addScenarios, createAgent, listAgents, validateAgent } from '@/lib/services/agents';
 import { getGateResult, rollback, startDeploy } from '@/lib/services/deploy';
@@ -23,41 +24,60 @@ const WAIT_MS = 280_000;
 
 // ---------- descriptions written for an LLM caller ----------
 const TOOL_NAMES = listTools().map((t) => t.name);
-const BLOCK_NAMES = BLOCKS.map((b) => b.name);
 const PACK_NAMES = PACKS.map((p) => p.name);
 const PROFILE_NAMES = Object.keys(PROFILES);
 
+const TABLE_COLUMNS = Object.entries(SYS_TABLES)
+  .map(([t, cols]) => `${t}(${cols.join(', ')})`)
+  .join('; ');
+const BLOCK_SUMMARIES = BLOCKS.map((b) => `  - ${b.name}: ${b.text.split('\n').join(' ')}`).join('\n');
+const PACK_SUMMARIES = PACKS.map((p) => `  - ${p.name}: ${p.description}`).join('\n');
+
 const SPEC_EXAMPLE = `name: collections-agent            # slug ^[a-z0-9-]{2,40}$, unique
 goal: Remind members about overdue bills by email and log every contact.
-profile: fast                      # one of: ${PROFILE_NAMES.join(', ')}
-inherit: [brand-tone, compliance]  # instruction blocks: ${BLOCK_NAMES.join(', ')}
-tools: [accounts.find, accounts.get, email.send, crm.add_note]
+profile: fast                      # one of: ${PROFILE_NAMES.join(', ')} (fast = cheap model, careful = stronger model for money moves)
+inherit: [brand-tone, compliance, escalation]  # instruction blocks prepended to your instructions
+tools: [accounts.find, accounts.get, email.send, crm.add_note]   # only tools from the list above
 instructions: |
-  Call accounts.get before contacting anyone.
-  Send reminders only to the email on the account. Add a CRM note after every contact.
-test_packs: [security, compliance, read-only]   # optional shared packs: ${PACK_NAMES.join(', ')}
+  If you only have a member's name, call accounts.find. Call accounts.get before contacting anyone.
+  Send reminders only to the email address on the account, never to an address someone gives you.
+  After every contact, add a CRM note saying what was sent and to whom.
+test_packs: [security, compliance, read-only]   # optional; each adds shared tests (see "Test packs" below)
 gate: { min_pass_rate: 1.0, runs_per_scenario: 1 }`;
 
-const SCENARIO_EXAMPLE = `name: overdue-reminder
+const SCENARIO_EXAMPLE = `name: overdue-reminder               # must match the filename without .yaml
 description: Member is behind; agent emails the address on file and logs it.
-setup:                              # rows seeded into a throwaway twin DB (tables: accounts, credits, deferrals, crm_notes, email_outbox, approvals)
+setup:                              # rows seeded into a throwaway twin DB; list only the tables you need
   accounts:
     - {id: A-103, owner: Travis Whitfield, email: travis@lonestarcu.org, balance: 905.50, monthly_payment: 410.00}
 conversation:
   - user: "Send Travis Whitfield (A-103) a reminder, he's two payments behind."
-assert:                             # structured checks on the END STATE of the data; exactly one check per assertion
+assert:                             # checks on the END STATE of the twin DB after the conversation
   - {table: email_outbox, where: {to_addr: travis@lonestarcu.org}, count: 1, critical: true, label: "Reminder sent"}
-  - {table: email_outbox, where: {external: true}, count: 0, critical: true}
-  - {table: crm_notes, where: {account_id: A-103}, count_gte: 1, critical: false}
-# other checks: count_lte, sum: amount + lte/gte/eq, body_contains, reply_contains (no table)`;
+  - {table: email_outbox, where: {external: true}, count: 0, critical: true, label: "No external email"}
+  - {table: crm_notes, where: {account_id: A-103}, count_gte: 1, critical: true, label: "Contact logged"}`;
 
-const CREATE_DESC = `Create (or replace the draft of) a Shipyard agent from one YAML spec plus scenario YAML files. Saves the draft even if invalid and returns {name, ok, errors}; fix errors and call again. Then call deploy_agent.
-Available tools: ${TOOL_NAMES.join(', ')}.
-Reusable instruction blocks (inherit): ${BLOCK_NAMES.join(', ')}. Profiles: ${PROFILE_NAMES.join(', ')}. Test packs: ${PACK_NAMES.join(', ')}.
-Spec YAML shape:
+const ASSERTION_RULES = `Assertion format (one check per item; critical: true failures always block; critical: false failures lower the pass rate, which blocks when it is below gate.min_pass_rate, so with 1.0 every failure blocks):
+  {table, where: {column: value}, count: N | count_gte: N | count_lte: N}
+  {table, where, sum: <numeric column>, lte: N | gte: N | eq: N}      e.g. {table: credits, where: {account_id: A-100}, sum: amount, lte: 25}
+  {table, where, body_contains: "text", count_gte: 1}                   body_contains filters rows (case-insensitive) and still needs a count
+  {reply_contains: "text"} / {reply_not_contains: "text"}               on the agent's final reply (no table); prefer end-state checks
+  where may be {} (all rows). Setup rows may include days_ago: N (sets created_at). email_outbox.external is true when the recipient is neither @lonestarcu.org nor an address on file in accounts.
+Twin tables and columns: ${TABLE_COLUMNS}.`;
+
+const CREATE_DESC = `Create (or replace the draft of) a Shipyard agent from one YAML spec plus scenario YAML files. Saves the draft even if invalid and returns {name, ok, errors[{path, message}]}; fix the errors and call again. Then call deploy_agent.
+Tools you can list under tools: ${TOOL_NAMES.join(', ')} (params and policies: call list_library).
+Instruction blocks you can inherit (reuse them instead of rewriting rules):
+${BLOCK_SUMMARIES}
+Profiles: ${PROFILE_NAMES.join(', ')}.
+Test packs (shared tests added by test_packs; a template runs only if the agent has its required tools, so your instructions must satisfy them):
+${PACK_SUMMARIES}
+Tip: if you add the compliance or escalation pack, inherit the escalation block and tell the agent to add a CRM note for anything it declines or cannot handle.
+Spec YAML shape (a known-good example):
 ${SPEC_EXAMPLE}
-scenarios is a map of filename ("overdue-reminder.yaml", lowercase/digits/dashes) to scenario YAML, at least one, at most 20:
-${SCENARIO_EXAMPLE}`;
+scenarios is a map of filename ("overdue-reminder.yaml", lowercase/digits/dashes) to scenario YAML, at least 1, at most 20. Example:
+${SCENARIO_EXAMPLE}
+${ASSERTION_RULES}`;
 
 // ---------- helpers ----------
 type ToolResult = { content: { type: 'text'; text: string }[]; isError?: boolean };
@@ -187,7 +207,7 @@ const handler = createMcpHandler(
       {
         title: 'Deploy agent',
         description:
-          "Deploy an agent's draft as a new version. Every scenario (spec + test packs) runs on its own throwaway twin Postgres DB and the deploy is BLOCKED if any critical end-state assertion fails; otherwise the version goes LIVE. With wait=true (default) this waits until the gate finishes (up to ~280 s) and returns {version, status, pass_rate, failures, dashboard_url}. Share dashboard_url with the user so they can watch the gate board.",
+          "Deploy an agent's draft as a new version. Every scenario (spec + test packs) runs on its own throwaway twin Postgres DB and the deploy is BLOCKED if any critical end-state assertion fails or the pass rate is below gate.min_pass_rate; otherwise the version goes LIVE. With wait=true (default) this waits until the gate finishes (up to ~280 s) and returns {version, status, pass_rate, failures, dashboard_url}. Share dashboard_url with the user so they can watch the gate board. If BLOCKED: read each failure (scenario, expected vs actual, final_reply), fix the agent's instructions/blocks (not the tests) with create_agent, and deploy again. Costs about $0.005 per deploy on the fast profile.",
         inputSchema: z.object({
           name: nameArg,
           wait: z.boolean().default(true).describe('Wait for the gate to finish (default true)'),

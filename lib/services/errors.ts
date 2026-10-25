@@ -4,6 +4,7 @@ import type { ApiErrorCode } from '../contracts/api';
 export const ERROR_STATUS: Record<ApiErrorCode, number> = {
   bad_request: 400,
   unauthorized: 401,
+  forbidden: 403,
   not_found: 404,
   invalid_spec: 409,
   conflict: 409,

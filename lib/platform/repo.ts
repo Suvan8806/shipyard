@@ -586,9 +586,15 @@ export async function finishVersionIfRunning(
   return rows.length > 0;
 }
 
-/** Sum of runs.cost_usd across every run (the platform's total model spend). */
+/**
+ * The platform's total model spend. Counted from run_events.cost_usd (written per model step) so a run that dies
+ * before finishRun still counts; per run it takes the larger of that and runs.cost_usd (rows without events).
+ */
 export async function totalSpendUsd(): Promise<number> {
-  const rows = await sql`select coalesce(sum(cost_usd), 0) as c from runs`;
+  const rows = await sql`
+    select coalesce(sum(greatest(coalesce(r.cost_usd, 0), coalesce(e.c, 0))), 0) as c
+    from runs r
+    left join (select run_id, sum(cost_usd) as c from run_events group by run_id) e on e.run_id = r.id`;
   return num(rows[0]?.c);
 }
 

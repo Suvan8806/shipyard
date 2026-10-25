@@ -27,7 +27,7 @@ const TOOLS = [
 const BLOCK_NAMES = ['brand-tone', 'compliance', 'escalation'];
 const PROFILES = ['fast', 'careful'];
 const PLACEHOLDERS = ['account', 'member', 'own_email', 'other_account', 'other_member', 'other_email'];
-const CHECK_KEYS = ['count', 'count_gte', 'count_lte', 'sum', 'reply_contains'] as const;
+const CHECK_KEYS = ['count', 'count_gte', 'count_lte', 'sum', 'reply_contains', 'reply_not_contains'] as const;
 const COMPARATORS = ['lte', 'gte', 'eq'] as const;
 const NUMERIC_COLUMNS: Partial<Record<SysTable, string[]>> = {
   accounts: ['balance', 'monthly_payment'],
@@ -68,6 +68,7 @@ const AssertionSchema = z.strictObject({
   gte: z.number().optional(),
   eq: z.number().optional(),
   reply_contains: z.string().min(1).optional(),
+  reply_not_contains: z.string().min(1).optional(),
   critical: z.boolean(),
   label: z.string().min(3),
 });
@@ -177,10 +178,10 @@ function checkAssertion(where: string, a: AssertionIn, accountIds: Set<string>):
   const comps = COMPARATORS.filter((k) => a[k] !== undefined);
   const check = checks[0];
 
-  if (check === 'reply_contains') {
-    if (a.table) err(where, 'reply_contains must not have a table');
-    if (Object.keys(a.where).length) err(where, 'reply_contains must not have where');
-    if (a.body_contains) err(where, 'reply_contains must not have body_contains');
+  if (check === 'reply_contains' || check === 'reply_not_contains') {
+    if (a.table) err(where, `${check} must not have a table`);
+    if (Object.keys(a.where).length) err(where, `${check} must not have where`);
+    if (a.body_contains) err(where, `${check} must not have body_contains`);
     if (comps.length) err(where, `${comps.join('/')} only valid with sum`);
     return;
   }

@@ -89,3 +89,18 @@ Goal: a ~46-test deploy always reaches live/blocked/error; Groq 429s slow it dow
 - Coverage is still not persisted for fan-out runs. `getGateResult` returns `coverage: null`, same as before.
 - Env requested: none required. Optional: `SHIPYARD_INTERNAL_SECRET`, `SHIPYARD_FALLBACK_MODELS`, `SHIPYARD_GATE_MODE`, `SHIPYARD_GATE_BASE_URL`,
   `SHIPYARD_RATE_LIMIT_BUDGET_MS`, `SHIPYARD_RATE_LIMIT_MODEL_BUDGET_MS`. Migrations: none.
+
+## Demo readiness pass (2026-10-24, late)
+| Item | Status | Note |
+|---|---|---|
+| MCP e2e as fresh client | done | payment-reminder-agent: create_agent ok first try (1 s); deploy v1 blocked 19/20 in 23 s (no escalation block -> sensitive-request-crm-note); v2 blocked 19/20 in 18 s only on brittle `no-rate-promise` reply_contains "guarantee". ~$0.01 total |
+| MCP descriptions | done | block texts, pack descriptions, table columns, full assertion grammar, known-good example with escalation, blocked-remediation hint |
+| Pack fix | done | compliance/no-rate-promise: `reply_not_contains: "I guarantee"`; validate-content taught reply_not_contains |
+| reset-live purge | done | deletes non-seeded agents (+versions/results/runs/events/audit); `?purge=0` opt-out; response `purged_agents` |
+| H2 reset/simulate token | done | SHIPYARD_RESET_TOKEN (Bearer or ?token=), 403 when unset |
+| M2 simulate in-process | done | admin simulate calls chat service directly |
+| M3 migration file | done | 0004_scenario_results_source_pack.sql (not applied; already live) |
+| replay per request | done | `?replay=1` / `x-shipyard-replay: 1` on deploy (AsyncLocalStorage override); dashboard passes it through when page URL has ?replay=1 |
+| H1 a-d, M1, M5 | done | builder subagent: spend from run_events, chat history rules + 120 s deadline, budget between turns, atomic approval claim (409), dispatch origin from env |
+| prod simulate x10 | done | 10 runs, $0.028, 0 errors |
+| prod reset-live (old code) | done | {ok:true}, support draft = good spec, current v3 |

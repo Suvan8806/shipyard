@@ -77,6 +77,17 @@ export interface SimulateOptions {
   agents?: string[];
   /** Per-conversation log line. */
   onRun?: (line: string) => void;
+  /**
+   * In-process mode (POST /api/admin/simulate): call the services directly instead of HTTP, so simulated traffic
+   * never hits the per-IP chat rate limit or needs auth headers. baseUrl is ignored when this is set.
+   */
+  direct?: SimulateDirect;
+}
+
+export interface SimulateDirect {
+  chat: (agent: string, messages: { role: 'user'; content: string }[]) => Promise<ChatResponse>;
+  trace: (runId: string) => Promise<Pick<RunTrace, 'events'>>;
+  liveAgents: () => Promise<string[]>;
 }
 
 export type SimulateResult = SimulateResponse & { errors: number };
@@ -105,11 +116,25 @@ export async function simulateTraffic(count: number, baseUrl: string, opts: Simu
   const n = Math.max(0, Math.floor(count));
   const concurrency = Math.min(Math.max(opts.concurrency ?? 3, 1), 8);
 
-  const allowed = opts.agents ?? (await liveAgents(base, f, headers));
+  const direct = opts.direct;
+  const allowed = opts.agents ?? (direct ? await direct.liveAgents().catch(() => null) : await liveAgents(base, f, headers));
   const pairs = PERSONAS.flatMap((p) => p.agents.filter((a) => !allowed || allowed.includes(a)).map((a) => ({ p, a })));
   if (pairs.length === 0) return { runs: 0, cost_usd: 0, policy_blocks: 0, approvals: 0, errors: 0 };
 
   const total: SimulateResult = { runs: 0, cost_usd: 0, policy_blocks: 0, approvals: 0, errors: 0 };
+  const chatHttp = async (a: string, message: string): Promise<ChatResponse> => {
+    const res = await f(`${base}/api/agents/${encodeURIComponent(a)}/chat`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ messages: [{ role: 'user', content: message }] }),
+    });
+    if (!res.ok) throw new Error(`chat ${a} -> HTTP ${res.status}`);
+    return (await res.json()) as ChatResponse;
+  };
+  const traceHttp = async (runId: string): Promise<Pick<RunTrace, 'events'> | null> => {
+    const tr = await f(`${base}/api/runs/${encodeURIComponent(runId)}`, { headers });
+    return tr.ok ? ((await tr.json()) as RunTrace) : null;
+  };
   let next = 0;
   const worker = async () => {
     while (next < n) {
@@ -117,21 +142,14 @@ export async function simulateTraffic(count: number, baseUrl: string, opts: Simu
       const { p, a } = pick(pairs);
       const message = pick(p.messages);
       try {
-        const res = await f(`${base}/api/agents/${encodeURIComponent(a)}/chat`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ messages: [{ role: 'user', content: message }] }),
-        });
-        if (!res.ok) throw new Error(`chat ${a} -> HTTP ${res.status}`);
-        const chat = (await res.json()) as ChatResponse;
+        const chat = direct ? await direct.chat(a, [{ role: 'user', content: message }]) : await chatHttp(a, message);
         total.runs++;
         total.cost_usd += Number(chat.cost_usd) || 0;
         let blocks = 0;
         let approvals = 0;
         try {
-          const tr = await f(`${base}/api/runs/${encodeURIComponent(chat.run_id)}`, { headers });
-          if (tr.ok) {
-            const trace = (await tr.json()) as RunTrace;
+          const trace = direct ? await direct.trace(chat.run_id) : await traceHttp(chat.run_id);
+          if (trace) {
             blocks = trace.events.filter((e) => e.type === 'policy_block').length;
             approvals = trace.events.filter((e) => e.type === 'approval').length;
           }

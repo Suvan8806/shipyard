@@ -24,6 +24,7 @@ export type ApiError = z.infer<typeof ApiErrorSchema>;
 export type ApiErrorCode =
   | 'bad_request'
   | 'unauthorized'
+  | 'forbidden'
   | 'not_found'
   | 'invalid_spec'
   | 'conflict'
@@ -117,7 +118,7 @@ export interface RollbackResponse { current_version: number }
 export interface ChatResponse { run_id: string; reply: string; cost_usd: number }
 /** Proposed scenarios (not yet saved): filename -> scenario YAML. The UI lets the user accept them into the draft. */
 export interface GenerateTestsResponse { scenarios: Record<string, string> }
-export interface ResetLiveResponse { ok: true }
+export interface ResetLiveResponse { ok: true; /** Agents created live (not seeded) that the reset deleted. */ purged_agents?: string[] }
 
 export interface RunTrace {
   run: RunRow;

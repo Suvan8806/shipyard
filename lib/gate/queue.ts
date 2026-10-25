@@ -43,27 +43,24 @@ export function isInternalRequest(req: Request): boolean {
   return got.length === want.length && timingSafeEqual(got, want);
 }
 
-function envBaseUrl(): string | null {
+/**
+ * Origin of the internal route, from trusted env only (never the request Host header, which a caller controls and
+ * would receive the internal secret): SHIPYARD_GATE_BASE_URL, else the production URL in production, else this
+ * deployment's URL, else localhost for `next dev`.
+ */
+function envBaseUrl(): string {
   if (process.env.SHIPYARD_GATE_BASE_URL) return process.env.SHIPYARD_GATE_BASE_URL.replace(/\/$/, '');
   if (process.env.VERCEL_ENV === 'production' && process.env.VERCEL_PROJECT_PRODUCTION_URL) {
     return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
   }
-  const u = process.env.VERCEL_BRANCH_URL ?? process.env.VERCEL_URL;
-  return u ? `https://${u}` : null;
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return `http://localhost:${process.env.PORT ?? 3000}`;
 }
 
-/** Where and how to dispatch from this invocation. The request origin wins (it's the URL the caller could reach). */
+/** Where and how to dispatch from this invocation. The base URL comes from env only; req is used for the bypass header. */
 export function dispatchCtx(req?: Request): DispatchCtx {
-  let origin: string | null = null;
-  if (req) {
-    try {
-      origin = new URL(req.url).origin;
-    } catch {
-      origin = null;
-    }
-  }
   return {
-    baseUrl: process.env.SHIPYARD_GATE_BASE_URL ? envBaseUrl() : (origin ?? envBaseUrl()),
+    baseUrl: envBaseUrl(),
     bypass: process.env.VERCEL_AUTOMATION_BYPASS_SECRET || req?.headers.get('x-vercel-protection-bypass') || null,
     deadline: Date.now() + INVOCATION_BUDGET_MS,
   };
