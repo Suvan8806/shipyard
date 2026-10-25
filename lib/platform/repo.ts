@@ -612,3 +612,112 @@ export async function listToolEventsForRuns(runIds: string[]): Promise<RunEvent[
     latency_ms: null,
   }));
 }
+
+// ---------- stress tests (dry runs; lib/stress) ----------
+// No new table: a stress test lives in scenario_results under a NEGATIVE version number (stress_id "s7" = version -7),
+// so it can never collide with real versions, never touches agent_versions/current_version and reuses the fan-out
+// queue functions above unchanged. Its metadata sits in a header row (scenario '__stress__', attempt 0, status
+// 'passed' so the queue treats it as terminal) under before_snapshot.__stress.
+export const STRESS_SCENARIO = '__stress__';
+
+export interface StressHeader {
+  version: number;
+  created_at: string;
+  meta: Record<string, unknown>;
+}
+
+function toStressHeader(r: DbRow): StressHeader {
+  const snap = (r.before_snapshot as Record<string, unknown> | null) ?? {};
+  return { version: num(r.version), created_at: iso(r.created_at), meta: (snap.__stress as Record<string, unknown>) ?? {} };
+}
+
+/** Allocates the next negative version for the agent and writes the header row. Returns the version (< 0). */
+export async function createStressHeader(agent: string, meta: Record<string, unknown>): Promise<number> {
+  for (let tries = 0; tries < 5; tries++) {
+    const rows = await sql`
+      insert into scenario_results (agent, version, scenario, attempt, status, before_snapshot, final_reply, source)
+      select ${agent}, coalesce(min(version), 0) - 1, ${STRESS_SCENARIO}, 0, 'passed',
+             ${json({ __stress: meta })}, ${String(meta.headline ?? '')}, 'spec'
+      from scenario_results where agent = ${agent} and version < 0
+      on conflict (agent, version, scenario, attempt) do nothing
+      returning version`;
+    if (rows[0]) return num(rows[0].version);
+  }
+  throw new Error('could not allocate a stress id');
+}
+
+export async function getStressHeader(agent: string, version: number): Promise<StressHeader | null> {
+  if (version >= 0) return null;
+  const rows = await sql`
+    select version, created_at, before_snapshot from scenario_results
+    where agent = ${agent} and version = ${version} and scenario = ${STRESS_SCENARIO} and attempt = 0`;
+  return rows[0] ? toStressHeader(rows[0]) : null;
+}
+
+/** Newest first. */
+export async function listStressHeaders(agent: string, limit = 50): Promise<StressHeader[]> {
+  const rows = await sql`
+    select version, created_at, before_snapshot from scenario_results
+    where agent = ${agent} and version < 0 and scenario = ${STRESS_SCENARIO} and attempt = 0
+    order by version asc limit ${Math.min(Math.max(limit, 1), 200)}`;
+  return rows.map(toStressHeader);
+}
+
+/**
+ * Shallow-merges `patch` into the header metadata. With onlyIfRunning, applies only while meta.status is 'running'
+ * (idempotent finalize: the first caller wins). Returns true if a row was updated.
+ */
+export async function updateStressMeta(
+  agent: string,
+  version: number,
+  patch: Record<string, unknown>,
+  opts: { onlyIfRunning?: boolean } = {},
+): Promise<boolean> {
+  const headline = typeof patch.headline === 'string' ? patch.headline : null;
+  const rows = await sql`
+    update scenario_results
+    set before_snapshot = jsonb_set(coalesce(before_snapshot, '{}'::jsonb), '{__stress}',
+                                    coalesce(before_snapshot->'__stress', '{}'::jsonb) || ${json(patch)}),
+        final_reply = coalesce(${headline}, final_reply)
+    where agent = ${agent} and version = ${version} and scenario = ${STRESS_SCENARIO} and attempt = 0
+      and (${!opts.onlyIfRunning} or before_snapshot->'__stress'->>'status' = 'running')
+    returning version`;
+  return rows.length > 0;
+}
+
+/** Is a stress test of this agent still running (started within `withinSecs`)? */
+export async function hasRunningStress(agent: string, withinSecs: number): Promise<boolean> {
+  const rows = await sql`
+    select 1 from scenario_results
+    where agent = ${agent} and version < 0 and scenario = ${STRESS_SCENARIO} and attempt = 0
+      and before_snapshot->'__stress'->>'status' = 'running'
+      and created_at > now() - make_interval(secs => ${withinSecs})
+    limit 1`;
+  return rows.length > 0;
+}
+
+/** Stress-level timeout: once the stress is older than `secs`, every unfinished attempt becomes 'error'. */
+export async function sweepStaleStress(agent: string, version: number, secs: number): Promise<number> {
+  const msg = `Stress error: this attempt did not finish within ${Math.round(secs / 60)} minutes.`;
+  const rows = await sql`
+    update scenario_results
+    set status = 'error', final_reply = ${msg}, before_snapshot = null
+    where agent = ${agent} and version = ${version} and status = 'running' and scenario <> ${STRESS_SCENARIO}
+      and exists (select 1 from scenario_results h
+                  where h.agent = ${agent} and h.version = ${version} and h.scenario = ${STRESS_SCENARIO}
+                    and h.attempt = 0 and h.created_at < now() - make_interval(secs => ${secs}))
+    returning id`;
+  return rows.length;
+}
+
+/** Cost and wall-clock duration (ms, null while unfinished) per run id. */
+export async function runStats(runIds: string[]): Promise<Map<string, { cost_usd: number; duration_ms: number | null }>> {
+  const ids = [...new Set(runIds.filter((id) => /^[0-9a-f-]{36}$/i.test(id)))];
+  const out = new Map<string, { cost_usd: number; duration_ms: number | null }>();
+  if (!ids.length) return out;
+  const rows = await sql`
+    select id::text as id, cost_usd, extract(epoch from (ended_at - started_at)) * 1000 as ms
+    from runs where id = any(${`{${ids.join(',')}}`}::uuid[])`;
+  for (const r of rows) out.set(String(r.id), { cost_usd: num(r.cost_usd), duration_ms: numOrNull(r.ms) });
+  return out;
+}
