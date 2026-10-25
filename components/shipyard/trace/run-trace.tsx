@@ -2,14 +2,14 @@
 // Run trace + twin diff (design/direction.md 7.2). Polls every 2 s while the run is in flight.
 import { useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, CircleCheck, CircleDashed, OctagonX, SearchX, TriangleAlert } from 'lucide-react';
+import { ArrowLeft, CircleCheck, CircleDashed, OctagonX, TriangleAlert } from 'lucide-react';
 import type { RunTrace } from '@/lib/contracts/api';
 import type { RunEvent, ScenarioResultSummary } from '@/lib/types';
 import { cn } from '@/lib/utils';
-import { ApiRequestError, getGate, getRun } from '../api';
+import { getGate, getRun } from '../api';
 import { verdicts } from '../gate/gate-model';
 import { fmtCost, fmtDateTime } from '../format';
-import { EmptyState, ErrorState, Skeleton, StaleNotice } from '../states';
+import { EmptyState, ErrorState, isNotFound, NotFoundState, Skeleton, StaleNotice } from '../states';
 import { StatusPill } from '../status';
 import { useData, useNow } from '../use-data';
 import { errorText, Timeline } from './timeline';
@@ -180,21 +180,11 @@ export function RunTraceView({ id }: { id: string }) {
   }, [t]);
   const result = useScenarioResult(t);
 
-  if (!t && error instanceof ApiRequestError && error.status === 404) {
+  if (!t && isNotFound(error)) {
     return (
-      <div className="mx-auto max-w-3xl">
-        <EmptyState
-          icon={<SearchX />}
-          title="Run not found"
-          action={
-            <Link href="/agents" className="text-sm font-semibold text-primary hover:underline">
-              Back to agents
-            </Link>
-          }
-        >
-          No run with id <span className="font-mono">{id}</span>. It may have been cleaned up by a reset.
-        </EmptyState>
-      </div>
+      <NotFoundState title="Run not found">
+        No run with id <span className="font-mono text-foreground break-all">{id}</span>. It may have been cleaned up by a reset.
+      </NotFoundState>
     );
   }
   if (!t && error) {

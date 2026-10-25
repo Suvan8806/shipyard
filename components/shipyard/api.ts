@@ -212,12 +212,26 @@ export function getAudit(): Promise<AuditRow[]> {
 }
 
 // ---------- admin ----------
+/**
+ * The admin token from the page URL (?token=...), read fresh on every call. Never stored or logged: it only travels
+ * as ?token= on the admin calls below, which the API requires (SHIPYARD_RESET_TOKEN).
+ */
+export function adminToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  return new URLSearchParams(window.location.search).get('token') || null;
+}
+
+function withAdminToken(path: string): string {
+  const t = adminToken();
+  return t ? `${path}?token=${enc(t)}` : path;
+}
+
 export function simulateTraffic(count = 5): Promise<SimulateResponse> {
   return USE_MOCKS
     ? mocked(() => mock.simulateTraffic(count), 1200)
-    : request('/api/admin/simulate', { method: 'POST', body: { count } });
+    : request(withAdminToken('/api/admin/simulate'), { method: 'POST', body: { count } });
 }
 
 export function resetLive(): Promise<{ ok: true }> {
-  return USE_MOCKS ? mocked(() => ({ ok: true as const })) : request('/api/admin/reset-live', { method: 'POST' });
+  return USE_MOCKS ? mocked(() => ({ ok: true as const })) : request(withAdminToken('/api/admin/reset-live'), { method: 'POST' });
 }

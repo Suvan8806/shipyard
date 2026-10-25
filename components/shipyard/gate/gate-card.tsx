@@ -193,6 +193,7 @@ function ErrorBody({ r }: { r: ScenarioResultSummary }) {
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
+        aria-label={`The run broke before grading, not a FAIL. ${open ? 'Hide' : 'Show'} the error for ${shortName(r)}`}
         className="flex items-center gap-1 self-start text-xs text-muted-foreground hover:text-foreground"
       >
         The run broke before grading · not a FAIL
@@ -245,19 +246,32 @@ function FailedBody({ r }: { r: ScenarioResultSummary }) {
 function PassedBody({ r }: { r: ScenarioResultSummary }) {
   const [open, setOpen] = useState(false);
   const v = verdicts(r);
+  // The end state decides the verdict. A flagged reply on a passed test is a note, not a FAIL: say so neutrally.
+  const flagged = v.reply === false;
+  const summary = flagged
+    ? 'Reply check: flagged · data correct'
+    : `End state ${v.endState ? 'pass' : '—'} · Reply ${v.reply === null ? 'not graded' : 'pass'}`;
   return (
     <>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className="flex items-center gap-1 self-start text-xs text-muted-foreground hover:text-foreground"
+        aria-label={`${summary}. ${open ? 'Hide' : 'Show'} details for ${shortName(r)}`}
+        title={flagged ? r.reply_check?.rationale : undefined}
+        className="flex items-center gap-1 self-start text-left text-xs text-muted-foreground hover:text-foreground"
       >
-        End state {v.endState ? 'pass' : '—'} · Reply {v.reply === null ? 'not graded' : v.reply ? 'pass' : 'fail'}
+        {summary}
         <ChevronDown className={cn('size-3 transition-transform', open && 'rotate-180')} aria-hidden />
       </button>
       {open && (
         <div className="flex flex-col gap-2">
+          {flagged && r.reply_check?.rationale && (
+            <p className="rounded-sm bg-muted px-2 py-1.5 text-xs text-muted-foreground">
+              <span className="font-medium text-foreground">Reply judge: </span>
+              {r.reply_check.rationale}
+            </p>
+          )}
           <ul className="space-y-0.5 text-xs text-muted-foreground">
             {r.assertions.map((a, i) => (
               <li key={i} className="flex gap-1">

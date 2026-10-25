@@ -19,10 +19,13 @@ const STYLES: Record<AnyStatus, { label: string; cls: string; Icon: typeof Circl
 export function StatusPill({
   status,
   size = 'sm',
+  label,
   className,
 }: {
   status: AnyStatus;
   size?: 'sm' | 'lg';
+  /** Overrides the status word (e.g. "Live v3"). */
+  label?: string;
   className?: string;
 }) {
   const s = STYLES[status] ?? { label: String(status), cls: 'bg-draft-subtle text-draft border-border', Icon: CircleDashed };
@@ -40,7 +43,7 @@ export function StatusPill({
         strokeWidth={2}
         aria-hidden
       />
-      {s.label}
+      {label ?? s.label}
     </span>
   );
 }
