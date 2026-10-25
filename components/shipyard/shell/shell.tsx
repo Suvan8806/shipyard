@@ -6,6 +6,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 import { getApprovals, USE_MOCKS } from '../api';
 import { useData } from '../use-data';
+import { Flap } from '../flap';
 
 const NAV = [
   { href: '/agents', label: 'Agents', Icon: Bot },
@@ -16,23 +17,36 @@ const NAV = [
 
 export const PERSONA = { name: 'Maya Ortiz', role: 'Platform', org: 'Lone Star Community CU' } as const;
 
-/** Tag glyph: a rounded tag with an eyelet (design/direction.md 7.0). */
-function TagGlyph() {
+/** Board glyph: two flap leaves with the split between them. */
+function BoardGlyph() {
   return (
-    <svg viewBox="0 0 16 16" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
-      <rect x="1.5" y="3" width="13" height="10" rx="2" />
-      <circle cx="5" cy="8" r="1.4" />
+    <svg viewBox="0 0 20 20" className="size-5" aria-hidden>
+      <rect x="1" y="1" width="18" height="8.5" rx="1.5" fill="var(--signal)" />
+      <rect x="1" y="10.5" width="18" height="8.5" rx="1.5" fill="var(--signal)" opacity="0.72" />
     </svg>
   );
 }
 
 function Wordmark() {
   return (
-    <Link href="/agents" className="flex items-center gap-2 text-lg font-bold tracking-tight">
-      <TagGlyph />
-      <span>Shipyard</span>
+    <Link href="/agents" className="flex items-center gap-2.5 rounded-sm">
+      <BoardGlyph />
+      <span className="board-title text-[1.75rem] tracking-[0.01em] uppercase">Shipyard</span>
     </Link>
   );
+}
+
+/** Local time on the board, like every concourse display. Client-only so SSR never disagrees with the clock. */
+function BoardClock() {
+  const [now, setNow] = useState<string | null>(null);
+  useEffect(() => {
+    const fmt = () => new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+    setNow(fmt());
+    const id = window.setInterval(() => setNow(fmt()), 15_000);
+    return () => window.clearInterval(id);
+  }, []);
+  if (!now) return <span className="h-[1.6rem]" aria-hidden />;
+  return <Flap text={now} tone="signal" className="text-[1.3rem]" label={`Local time ${now}`} />;
 }
 
 function ThemeToggle() {
@@ -54,7 +68,7 @@ function ThemeToggle() {
     <button
       type="button"
       onClick={toggle}
-      className="grid size-8 place-items-center rounded-md text-sidebar-muted hover:bg-sidebar-accent hover:text-sidebar-foreground"
+      className="grid size-9 place-items-center rounded-md text-sidebar-muted transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-signal focus-visible:outline-none"
       aria-label="Toggle dark mode"
     >
       {dark ? <Sun className="size-4" /> : <Moon className="size-4" />}
@@ -78,18 +92,24 @@ function NavLinks({ pending, compact }: { pending: number; compact?: boolean }) 
             key={href}
             href={href}
             className={cn(
-              'flex items-center gap-2 rounded-md text-sm font-medium transition-colors',
-              compact ? 'px-2.5 py-1.5' : 'px-3 py-2',
+              'status-word flex items-center gap-2.5 rounded-sm transition-colors focus-visible:ring-2 focus-visible:ring-signal focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar focus-visible:outline-none',
+              compact ? 'shrink-0 px-2.5 py-2 text-[0.9375rem]' : 'px-3 py-2.5 text-[1.0625rem]',
               active
-                ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                : 'text-sidebar-muted hover:bg-sidebar-accent/60 hover:text-sidebar-foreground',
+                ? 'bg-signal text-signal-foreground'
+                : 'text-sidebar-muted hover:bg-sidebar-accent hover:text-sidebar-foreground',
             )}
           >
-            <Icon className="size-4 shrink-0" aria-hidden />
-            <span className={cn(compact && 'sr-only sm:not-sr-only')}>{label}</span>
+            <Icon className="size-[1.1rem] shrink-0" strokeWidth={2.25} aria-hidden />
+            <span>{label}</span>
             {href === '/approvals' && pending > 0 && (
-              <span className="ml-auto rounded-sm bg-sidebar-primary px-1.5 text-2xs font-semibold tabular-nums text-sidebar-primary-foreground">
+              <span
+                className={cn(
+                  'ml-auto grid min-w-6 place-items-center rounded-sm px-1 py-0.5 text-sm tabular-nums',
+                  active ? 'bg-signal-foreground text-signal' : 'bg-warn-lamp text-signal-foreground',
+                )}
+              >
                 {pending}
+                <span className="sr-only"> pending</span>
               </span>
             )}
           </Link>
@@ -103,14 +123,14 @@ function ProdStatus({ apiDown }: { apiDown: boolean }) {
   if (USE_MOCKS) {
     return (
       <div className="flex items-center gap-2 text-xs text-sidebar-muted">
-        <span className="size-2 rounded-full bg-sidebar-muted" aria-hidden />
+        <span className="lamp text-sidebar-muted" aria-hidden />
         <span>Demo data (offline mode)</span>
       </div>
     );
   }
   return (
     <div className="flex items-center gap-2 text-xs text-sidebar-muted">
-      <span className={cn('size-2 rounded-full', apiDown ? 'bg-warn-solid' : 'bg-pass-solid')} aria-hidden />
+      <span className={cn('lamp', apiDown ? 'text-warn-lamp' : 'text-pass-lamp')} data-blink={apiDown ? 'true' : undefined} aria-hidden />
       <span>
         Production · <span className="text-sidebar-foreground">{apiDown ? 'API unreachable' : 'Up'}</span>
       </span>
@@ -121,10 +141,10 @@ function ProdStatus({ apiDown }: { apiDown: boolean }) {
 function Persona() {
   return (
     <div className="flex items-center gap-2">
-      <span className="grid size-8 place-items-center rounded-full bg-sidebar-primary text-xs font-semibold text-sidebar-primary-foreground">MO</span>
+      <span className="grid size-9 place-items-center rounded-sm bg-board-cell font-display text-base font-extrabold text-board-ink" aria-hidden>MO</span>
       <div className="leading-tight">
-        <div className="text-sm font-medium">{PERSONA.name}</div>
-        <div className="text-xs text-sidebar-muted">{PERSONA.role} · {PERSONA.org}</div>
+        <div className="text-sm font-bold">{PERSONA.name}</div>
+        <div className="text-xs text-sidebar-muted">{PERSONA.role}</div>
       </div>
     </div>
   );
@@ -134,34 +154,48 @@ export function Shell({ children }: { children: ReactNode }) {
   const { count: pending, apiDown } = usePending();
   return (
     <div className="sy-root flex min-h-screen w-full flex-col bg-background text-foreground lg:flex-row">
-      {/* Desktop rail: committed Notice-blue field */}
-      <aside className="sticky top-0 hidden h-screen w-[232px] shrink-0 flex-col gap-6 bg-sidebar p-4 text-sidebar-foreground lg:flex">
-        <Wordmark />
-        <nav className="flex flex-col gap-1" aria-label="Main">
+      <a
+        href="#main"
+        className="sr-only z-50 rounded-sm bg-signal px-3 py-2 font-bold text-signal-foreground focus:not-sr-only focus:fixed focus:top-3 focus:left-3"
+      >
+        Skip to content
+      </a>
+      {/* Desktop rail: the board */}
+      <aside className="sticky top-0 hidden h-screen w-[248px] shrink-0 flex-col bg-sidebar text-sidebar-foreground lg:flex">
+        <div className="flex flex-col gap-1 border-b border-sidebar-border px-5 pt-6 pb-5">
+          <Wordmark />
+          <p className="text-xs text-sidebar-muted">{PERSONA.org}</p>
+        </div>
+        <nav className="flex flex-col gap-1 p-3" aria-label="Main">
           <NavLinks pending={pending} />
         </nav>
-        <div className="mt-auto flex flex-col gap-4">
-          <ProdStatus apiDown={apiDown} />
+        <div className="mt-auto flex flex-col gap-4 border-t border-sidebar-border px-5 py-4">
+          <div className="flex items-center justify-between gap-2">
+            <ProdStatus apiDown={apiDown} />
+            <BoardClock />
+          </div>
           <div className="flex items-center justify-between gap-2">
             <Persona />
             <ThemeToggle />
           </div>
         </div>
       </aside>
-      {/* Mobile top bar in the same field */}
-      <header className="sticky top-0 z-30 flex flex-col gap-1.5 bg-sidebar px-4 py-2 text-sidebar-foreground lg:hidden">
-        <div className="flex h-10 items-center justify-between">
+      {/* Mobile top bar: the same board */}
+      <header className="sticky top-0 z-30 flex flex-col gap-2 bg-sidebar px-4 pt-2 pb-2.5 text-sidebar-foreground shadow-(--shadow-board) lg:hidden">
+        <div className="flex h-10 items-center justify-between gap-3">
           <Wordmark />
           <div className="flex items-center gap-2">
             <ProdStatus apiDown={apiDown} />
             <ThemeToggle />
           </div>
         </div>
-        <nav className="-mx-1 flex gap-1" aria-label="Main">
+        <nav className="-mx-4 flex gap-1 overflow-x-auto px-4 [scrollbar-width:none]" aria-label="Main">
           <NavLinks pending={pending} compact />
         </nav>
       </header>
-      <main className="min-w-0 flex-1 px-4 py-6 lg:px-6 lg:py-8">{children}</main>
+      <main id="main" className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-10 lg:py-9">
+        <div className="mx-auto w-full max-w-[1440px]">{children}</div>
+      </main>
     </div>
   );
 }

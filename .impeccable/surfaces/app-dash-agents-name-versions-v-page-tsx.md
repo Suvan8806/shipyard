@@ -2,32 +2,32 @@
 version: 1
 slug: "app-dash-agents-name-versions-v-page-tsx"
 primary_target: "app/(dash)/agents/[name]/versions/[v]/page.tsx"
-related_targets: ["app/(dash)/runs/[id]/page.tsx"]
+related_targets: ["app/(dash)/agents/page.tsx","app/(dash)/runs/[id]/page.tsx"]
 ---
 
-# Gate board (and the dashboard shell it lives in)
+# Shipyard dashboard: Departures (complete overhaul)
 
-Scope: `/agents/[name]/versions/[v]` gate board, plus the run trace `/runs/[id]` it links to. Visitor mode: **Operate**. Audience: Maya Ortiz (platform engineer) at work; HackTX judges watching on a projector during the 60-second "catch" beat. Task: see in one glance whether a version shipped, and if not, exactly which data was wrong. Memorable moment: `Reply check: PASS` beside `End state: FAIL`, a second $25 credit row in the twin diff, and "Blocked. v1 is still serving."
-
-Full specs for Lane D live in `design/direction.md`; tokens in `design/tokens.css`.
+Scope: every dashboard route (shell, agents fleet, agent page + spec editor, gate board, run trace + twin diff, library, approvals, audit, Stress Lab, version diff, empty/loading/error/404). Visitor mode: **Operate**. Audience: Maya Ortiz (platform engineer) at work; HackTX judges watching a projector from the back of a hall, and on phones. Task: know at a glance which agents are serving, what is under test, and why a version was stopped. Memorable moment: the gate board's 46 rows flap in one by one, then BLOCKED cascades across the verdict board in giant flap cells, Reply check PASS beside End state FAIL, and "v3 is still serving."
 
 ## Direction contract
 
-THESIS: A deploy is an inspection, and every scenario is a tag hung on the version: quiet when it passes, loud when it fails, and the whole version locked out when the data is wrong. Refuses the category default of a grey dashboard of identical green/red badges where the reply grade and the data grade weigh the same.
+THESIS: The agent fleet is a departures board: every version is a departure, the gate is the boarding check, and BLOCKED is a cancelled departure that never leaves the platform while the previous one keeps running. Refuses the category default of a grey shadcn admin table with small coloured pills where a reply grade and a data verdict weigh the same.
 
-OWN-WORLD: Inspection and lockout tags. Cool tag-stock ground, a committed Notice-blue shell rail and primary, ANSI-style safety inks (green, red, caution yellow) used only for state. Archivo with condensed bold caps for status words; Geist Mono only for spec, assertions, diffs and money. Crisp 6px corners, 1px rules, no gradients, no glass.
+OWN-WORLD: Concourse. Matte board-black shell (rail + verdict boards) with paint-white flap letters; cool concourse-steel ground with white work surfaces in light, board-black ground in dark; signal yellow reserved for wayfinding (current nav, primary action, focus), lamp colours only for state (green on time/live, cyan boarding/running, red cancelled/blocked, orange delay/error). Sofia Sans Condensed heavy caps on flap cells and headings; Atkinson Hyperlegible Next for UI (read at distance); Atkinson Hyperlegible Mono for spec, assertions, diffs, money. 4px corners, hairline rules, lamp dots, no gradients, no glass.
 
-STORY: The judge sees cards flip from UNDER TEST to PASSED or FAILED, sees one FAILED tag whose reply line says PASS, reads expected ≤ 1 / got 2, sees the extra credits row, and understands the blocked banner means members were protected.
+STORY: The judge sees the fleet board of 8 agents with lamps, watches one Deploy turn into a boarding check where 46 test rows flip from TESTING to PASS/FAIL, sees BLOCKED cascade letter by letter, reads Reply check PASS (grey, small) against End state FAIL (red, huge) with expected ≤1 / got 2 and the +1 credits row, and understands members were protected because v3 is still serving.
 
-FIRST VIEWPORT: Left Notice-blue rail. Top: lockout banner (full width, blocked-solid, lock icon, "BLOCKED" in condensed caps, "v1 is still serving." at 28px, Back to editor / View failing run). Below: header row with agent + version + status tag, then counters "38 tests · 5 packs · 0 untested tools" at 36px numerals. Then a filter row (All / Failed / Critical) and the tag grid grouped by source, failed tags sorted first in each group.
+FIRST VIEWPORT: Gate board: board-black rail left (wordmark, nav with yellow current marker, persona, lamp for production). Top: full-width verdict board (black, 2-row flap cells: BLOCKED in 64-80px red-lit cells; "v3 is still serving." in 28px paint white; actions right). Below: route line "support-agent v4 → gate" with counters as flap numerals (46 tests · 5 packs · 0 untested tools), passed/failed tallies, then the catch spotlight (End state FAIL dominant vs Reply check PASS quiet, proof on the right), then filter tabs and the test rows grouped by source as a departures list (code, name, source, reply, end state lamp + word).
 
-FORM: Grounded candidate 5 of 7 (inspection and lockout tags), assigned by roll. seed:87eba0f94732cf64. Code-led (operate surface).
+FORM: Grounded candidate 6 of 7 (rail concourse split-flap departures board), assigned by roll; the dealt split-flap concourse challenger supplies the system grammar for the same world. seed:bd6e3600135c6575. Code-led (operate surface).
 
-SIGNATURE: The scenario result as an inspection tag: an eyelet status icon, a status band in condensed caps (solid only for FAILED and BLOCKED), ruled fields "End state" (prominent) over "Reply check" (quiet), and the disagreement callout "A reply-only eval would have shipped this." The blocked banner is the same tag language at page scale: the lockout tag.
+SIGNATURE: The split-flap cell: status words, version numbers and headline counters are set in individual board cells with a hairline split; when a value changes, the characters cascade through the alphabet and settle left to right (reduced motion: instant). Gate test rows flap in as they settle; the verdict lands as a cascade on the board.
 
-RAISES: (from variable-font-specimen) hierarchy by scale contrast: status words at 22px condensed caps against 12px field labels. (monochrome-product-marketing) every verdict sits beside its proof: expected/actual and the mini diff on the tag itself. (orienteering-map) one reserved ink per role: Notice blue is never a status. (cassette j-card) a visible budget: the spec editor shows "16 / 20 lines". (transit-diagram) the run trace is one vertical line with fixed-size station marks per event. (doujin-catalog) the grid repacks in whole tags, each with a short code (MS-03).
+RAISES: (japanese-high-density-web) density courage: the gate list packs 46 tests into ruled rows with short codes, no whitespace inflation. (rw-lexicon-shoulder-and-plate) colour quarantine: lamp colours appear only inside state cells and the verdict board, never as decoration. (terminal-yellow-wayfinding) one message per band, monumental number: the verdict board says one sentence and the version number is set large. (vertical-video-feed) one item owns the viewport: on a blocked gate the catch spotlight owns the first screen under the board. (labanotation) length is exact duration: run-trace events carry latency bars whose length is the measured latency.
 
-## Unresolved
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
 
-- Decision round not run with a live user (design lane is a subagent). The orchestrator or user may re-roll; the challengers and verdicts are in plans/status/design.md.
-- DESIGN.md is written at finish by the impeccable-documenter, after Lane D's build lands and the polish pass is done.
+## Decisions recorded (no live user channel)
+
+- Decision page not served: this ran as a subagent with no user channel; the assigned direction was built. Challenger verdicts: split-flap concourse = same world, merged as grammar; terminal yellow wayfinding = competitive (kept: one message per band); japanese high-density, lexicon, vertical feed, labanotation = declined (raises above).
+- Light remains default (projector washes out large dark fields); the shell and verdict boards are board-black in both themes.
