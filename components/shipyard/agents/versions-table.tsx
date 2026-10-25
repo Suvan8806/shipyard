@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { useState } from 'react';
-import { ArrowRight, GitBranch, Loader2, RotateCcw } from 'lucide-react';
+import { ArrowRight, GitBranch, GitCompare, Loader2, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import type { AgentDetail, VersionSummary } from '@/lib/contracts/api';
 import { Button } from '@/components/ui/button';
@@ -58,6 +58,7 @@ function RollbackButton({ name, target, onDone }: { name: string; target: number
 
 function VersionRow({ d, v, rollbackTarget, onChanged }: { d: AgentDetail; v: VersionSummary; rollbackTarget: number | null; onChanged: () => void }) {
   const serving = v.version === d.current_version;
+  const prevVersion = d.versions.find((x) => x.version < v.version)?.version ?? null;
   const href = `/agents/${encodeURIComponent(d.name)}/versions/${v.version}`;
   return (
     <tr className="hover:bg-accent">
@@ -66,6 +67,14 @@ function VersionRow({ d, v, rollbackTarget, onChanged }: { d: AgentDetail; v: Ve
           v{v.version}
         </Link>
         {serving && <span className="ml-2 text-xs font-semibold text-pass">serving</span>}
+        {prevVersion !== null && (
+          <Link
+            href={`/agents/${encodeURIComponent(d.name)}/diff?from=${prevVersion}&to=${v.version}`}
+            className="mt-1 flex w-fit items-center gap-1 text-xs font-medium text-primary hover:underline"
+          >
+            <GitCompare className="size-3" aria-hidden /> Compare v{prevVersion}
+          </Link>
+        )}
       </td>
       <td className="px-3 py-2.5 align-top">
         <StatusPill status={v.status} />
