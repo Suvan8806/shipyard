@@ -2,6 +2,7 @@ import { after, connection } from 'next/server';
 import { z } from 'zod';
 import type { StressStarted, StressSummary } from '@/lib/contracts/stress';
 import { dispatchCtx } from '@/lib/gate/queue';
+import { resolveUser, requireAgentRole } from '@/lib/services/authz';
 import { listStress, startStress } from '@/lib/services/stress';
 import { actorOf, body, guard, handle } from '../../../_lib/http';
 
@@ -24,6 +25,7 @@ export async function POST(req: Request, ctx: Ctx) {
   return handle<StressStarted>(
     async () => {
       guard(req, 'deploy');
+      await requireAgentRole(await resolveUser(req), 'run_tests', name);
       const input = await body(req, Body);
       const { run, ...started } = await startStress(name, input, actorOf(req));
       const dispatch = dispatchCtx(req);

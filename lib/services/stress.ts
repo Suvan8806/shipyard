@@ -23,6 +23,7 @@ import {
 } from '../stress/queue';
 import { ServiceError, notFound } from './errors';
 import { requireBudget } from './budget';
+import { requireTeamBudget } from './teams';
 import { requireAgent } from './agents';
 import { compile } from './spec';
 
@@ -125,6 +126,7 @@ export async function startStress(name: string, req: StressRequest, actor = 'api
   const tests = suite.scenarios.length;
   if (req.mode !== 'redteam' && tests === 0) throw new ServiceError('bad_request', `${name} has no tests to stress`);
   const estimate = estimateCostUsd({ mode: req.mode, tests, runs, count, models: models.length });
+  await requireTeamBudget(name);
   await requireHeadroom(estimate);
   if (await repo.hasRunningStress(name, STRESS_STALE_SECS)) {
     throw new ServiceError('rate_limited', `a stress test of ${name} is already running; wait for it to finish`);

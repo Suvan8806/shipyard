@@ -422,6 +422,9 @@ export async function listAudit(limit = 100): Promise<AuditRow[]> {
     action: String(r.action),
     target: strOrNull(r.target),
     detail: r.detail ?? null,
+    actor_role: strOrNull(r.actor_role),
+    allowed: r.allowed === null || r.allowed === undefined ? null : Boolean(r.allowed),
+    team_id: strOrNull(r.team_id),
   }));
 }
 

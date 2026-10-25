@@ -15,7 +15,7 @@ export async function generateTests(name: string, count: number): Promise<Genera
   } catch (e) {
     throw new ServiceError('invalid_spec', `could not parse the draft spec: ${e instanceof Error ? e.message : String(e)}`);
   }
-  await requireBudget();
+  await requireBudget(name);
   const generated = await generateScenarios(spec, Math.min(Math.max(count, 1), 20));
   const out: Record<string, string> = {};
   for (const s of generated) {

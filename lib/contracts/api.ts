@@ -159,6 +159,10 @@ export interface AuditRow {
   action: string;
   target: string | null;
   detail: unknown;
+  /** Enterprise: role of the actor at the time (authz rows), whether the attempt was allowed, and the team. */
+  actor_role?: string | null;
+  allowed?: boolean | null;
+  team_id?: string | null;
 }
 
 export interface SimulateResponse { runs: number; cost_usd: number; policy_blocks: number; approvals: number }

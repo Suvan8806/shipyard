@@ -9,6 +9,9 @@ import type {
 } from '../contracts/api';
 import { ServiceError, notFound } from './errors';
 import { specName, validate } from './spec';
+import { specTeam } from '../enterprise/roles';
+import { setAgentTeam } from '../platform/enterprise-repo';
+import { validateSpecTeam } from './teams';
 
 export const NAME_RE = /^[a-z0-9-]{2,40}$/;
 
@@ -67,7 +70,9 @@ export async function saveSpec(name: string, specYaml: string, actor = 'api'): P
   if (declared && declared !== name) {
     throw new ServiceError('bad_request', `spec name "${declared}" does not match agent "${name}"`);
   }
+  const team = await validateSpecTeam(specTeam(specYaml));
   await repo.upsertAgentDraft({ name, draft_spec_yaml: specYaml });
+  if (team) await setAgentTeam(name, team);
   const v = validate(specYaml, agent.draft_scenarios);
   await repo.audit(actor, 'agent.save_spec', name, { ok: v.ok, errors: v.errors.length });
   return v;
