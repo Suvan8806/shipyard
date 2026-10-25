@@ -2,6 +2,37 @@
 
 Use this for every Devpost answer. If a claim isn't here or in README/DEVPOST/PITCH/DEMO, say "not verified".
 
+## ⚠ LATEST UPDATES (read first; these override anything older below or in DEVPOST.md / README / PITCH)
+**Corrections to the existing docs:**
+- The support-agent spec is **17 lines**, not 18 (DEVPOST.md, README and PITCH say 18; fix them).
+- For the MCP story, use **payment-reminder-agent**, not collections-agent: real headless Claude Code, connected only to the production MCP server, created the agent → v1 **blocked 18/20** (real mistakes: it emailed a member who only asked a question; it claimed to log a CRM note it never wrote) → Claude read the failures, fixed its own instructions and redeployed → v2 **live 20/20**, about 2 minutes, under $0.01.
+- When describing the bad-edit catch, **only name `second-credit-this-month`**. Which other tests fail varies run to run (the model isn't perfectly deterministic); the second-credit catch is reliable.
+- **Roles, teams and permissions are LIVE**, not "being built" (see the enterprise section below).
+
+**Judge feedback from the first round:**
+- What landed: the testing approach (twin databases, end-state checks) and the reply PASS / end state FAIL contrast.
+- What they asked about: (1) the full lifecycle after deploy (does anything check it's still working?), (2) auth and who can use or deploy, (3) company context (does it know the company's tools and data?), (4) where tests run (answer: never real systems, always throwaway PGlite twins), (5) token cost ("isn't testing wasted tokens?"), (6) importing existing agents so others can build on them (not a feature yet).
+
+**Lifecycle coverage (be honest in "Challenges" / "What's next"):** design ✅ · build ✅ · evaluate ✅ · deploy ✅ (gated; no gradual/canary rollout) · human-in-the-loop ✅ (approvals) · retire/rollback ✅ · secure & govern ✅ (policies in code, roles, team ownership, budgets, audit of allowed AND denied attempts; identity simulated, SSO in production) · monitor ⚠️ (every live conversation is traced with cost, tool calls and policy blocks, and policies keep blocking in production; no health dashboard, automatic grading of live runs, alerting or drift detection yet) · improve ⚠️ (no automatic "turn a bad production conversation into a test" yet).
+
+**Reuse / shared context (answer to "do people have to set agents up again?"):**
+- A live agent is a **shared, ready-to-use service**: anyone can use the current verified version with zero setup from the dashboard Chat tab, the REST API (`POST /api/agents/:name/chat`), Claude Code via MCP (`chat_with_agent`) or the CLI. Everyone gets the latest verified version; a blocked version never reaches users.
+- The **building blocks are shared**: tools, policies, instruction blocks, model profiles and test packs are defined once; a new agent lists what it reuses, so a spec is ~17 lines. Improving a shared block or test pack improves every agent that uses it on its next deploy.
+- Not built: a "fork this agent" button, importing agents from other frameworks, Slack/Teams/website front-ends (the API is what they'd call), per-user memory between conversations.
+
+**Coding agents (judges may ask):** today's agents act on business data (accounts, credits, emails). Coding agents already *drive* Shipyard (Claude Code creates, deploys and inspects agents over MCP; the CLI and GitHub Action gate pull requests). Testing coding agents themselves is roadmap: the same pattern with a **repo twin** (a sandboxed copy of the repository instead of a database), code tools (read/edit files, run commands), policies (protected paths, max files changed, no secrets) and end-state checks ("does the full test suite still pass, did it only touch allowed files"). The architecture (tool registry, policies, twin interface, gate) is designed to be pluggable, but repo twins are not built.
+
+**The "is testing wasted tokens?" answer:** ~$0.28 per 46-test deploy; ~$1.50 total model spend for the whole hackathon (all deploys, rehearsals, Stress Lab); hard global cap ($8) plus per-team budgets. One wrong $25 credit costs more than 80 deploys.
+
+**Version history the judges may see on support-agent:** v1–v2 blocked (v2 = the −$25 zero-balance bug), **v3 LIVE 46/46** (the good spec, still serving), v4+ blocked: v4 = the scripted bad edit; v5–v8 = rehearsals, each correctly blocked (v8 was missing the zero-balance rule again, and the money-safety pack caught the −$25 credit again). The gate never let a bad version through.
+
+**Positioning lines:**
+- "Other tools check what the agent says. Shipyard checks what it does: on a throwaway copy of your data, before it reaches real customers."
+- "The LLM is the thing we test, not the thing we are."
+- "Build once, use everywhere: a live agent is a shared, verified service; the parts it's built from are shared too."
+
+**What's next (for the Devpost "What's next" section):** post-deploy Health view that automatically grades live conversations and flags bad ones; a "Turn into test" button so production failures become permanent tests (closing the loop: build → test → ship → watch → learn → test again); real SSO; gradual rollouts (send a % of traffic to the new version); coding-agent support with repo twins; fork/import agents; real connectors behind the same tool interface.
+
 ## One-liner
 **Crash-test dummies for enterprise agents.** Build an AI agent from one short YAML spec using shared tools, instructions, policies and test packs. It only ships once its *actions* are verified on throwaway twin databases.
 
