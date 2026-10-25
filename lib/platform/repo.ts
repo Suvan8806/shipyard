@@ -585,3 +585,30 @@ export async function finishVersionIfRunning(
     returning version`;
   return rows.length > 0;
 }
+
+/** Sum of runs.cost_usd across every run (the platform's total model spend). */
+export async function totalSpendUsd(): Promise<number> {
+  const rows = await sql`select coalesce(sum(cost_usd), 0) as c from runs`;
+  return num(rows[0]?.c);
+}
+
+/** Tool-level events (tool_call / policy_block / approval) of many runs in one query (gate coverage on read). */
+export async function listToolEventsForRuns(runIds: string[]): Promise<RunEvent[]> {
+  // uuid[] literal keeps the run_events (run_id, seq) index usable; ids are validated so the literal is safe.
+  const ids = [...new Set(runIds.filter((id) => /^[0-9a-f-]{36}$/i.test(id)))];
+  if (!ids.length) return [];
+  const rows = await sql`
+    select seq, ts, type, name from run_events
+    where run_id = any(${`{${ids.join(',')}}`}::uuid[]) and type in ('tool_call', 'policy_block', 'approval')`;
+  return rows.map((r) => ({
+    seq: num(r.seq),
+    ts: iso(r.ts),
+    type: r.type as EventType,
+    name: strOrNull(r.name),
+    payload: null,
+    tokens_in: null,
+    tokens_out: null,
+    cost_usd: null,
+    latency_ms: null,
+  }));
+}

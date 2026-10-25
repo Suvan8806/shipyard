@@ -28,6 +28,7 @@ export type ApiErrorCode =
   | 'invalid_spec'
   | 'conflict'
   | 'rate_limited'
+  | 'budget_exceeded'
   | 'internal';
 
 // ---------- Request bodies (validated by routes) ----------

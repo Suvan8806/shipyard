@@ -6,7 +6,8 @@ import type { z } from 'zod';
 import type { RunAgentFn, RunInput, RunResult, EventType } from '../types';
 import { PROFILES } from '../library/profiles';
 import { getTool, toWireName } from '../library';
-import { createResilientModel, resilientFor, type ChainModel, type ResilientState } from './model';
+import { createResilientModel, resilientFor, type ChainModel, type ResilientOptions, type ResilientState } from './model';
+import { assertBudget, isBudgetExceeded } from './budget';
 import { costOf } from './cost';
 import { buildSystemPrompt } from './prompt';
 import { checkPolicy, newRunState } from './policy';
@@ -29,6 +30,8 @@ export interface RunnerRepo {
     id: string,
     result: { cost_usd: number; tokens_in: number; tokens_out: number; outcome: string; final_reply: string | null },
   ): Promise<void>;
+  /** Total platform spend for the SHIPYARD_BUDGET_USD cap. Omitted (tests): no budget check. */
+  totalSpendUsd?(): Promise<number>;
 }
 
 const MAX_STEPS = 8;
@@ -125,14 +128,27 @@ export function createRunner(repo: RunnerRepo, opts: RunnerOptions = {}): RunAge
     }
 
     const instructions = buildSystemPrompt(spec);
-    const resilience = {
+    const resilience: ResilientOptions = {
       deadline: Date.now() + RUN_BUDGET_MS,
       sleep: opts.sleep,
-      onThrottle: (t: { model: string; waitMs: number | null; fallbackTo: string | null; error: string }) => {
+      onThrottle: (t) => {
         void log({
           type: 'error',
           name: 'rate_limit',
           payload: { model: t.model, retry_in_ms: t.waitMs, fallback_to: t.fallbackTo, error: t.error },
+        });
+      },
+      onSkip: (t) => {
+        void log({
+          type: 'error',
+          name: t.reason === 'tool_format' ? 'tool_format' : 'provider_dead',
+          payload: {
+            model: t.model,
+            reason: t.reason,
+            ...(t.retrying !== undefined ? { retrying: t.retrying } : {}),
+            fallback_to: t.fallbackTo,
+            error: t.error,
+          },
         });
       },
     };
@@ -149,6 +165,7 @@ export function createRunner(repo: RunnerRepo, opts: RunnerOptions = {}): RunAge
     const history: ModelMessage[] = [];
 
     try {
+      if (repo.totalSpendUsd) await assertBudget({ totalSpendUsd: () => repo.totalSpendUsd!() });
       for (const turn of plan(input.messages)) {
         history.push({ role: turn.role, content: turn.content });
         if (!turn.generate) continue;
@@ -198,7 +215,12 @@ export function createRunner(repo: RunnerRepo, opts: RunnerOptions = {}): RunAge
       }
     } catch (e) {
       outcome = 'error';
-      void log({ type: 'error', name: 'run', payload: { error: errMsg(e) } });
+      if (isBudgetExceeded(e)) {
+        finalReply = e.message;
+        void log({ type: 'error', name: 'budget', payload: { error: e.message, spend_usd: e.spendUsd, budget_usd: e.budgetUsd } });
+      } else {
+        void log({ type: 'error', name: 'run', payload: { error: errMsg(e) } });
+      }
     }
 
     flushTools();
@@ -223,7 +245,7 @@ export function createRunner(repo: RunnerRepo, opts: RunnerOptions = {}): RunAge
 
 async function defaultRepo(): Promise<RunnerRepo> {
   const repo = await import('../platform/repo');
-  return { createRun: repo.createRun, appendEvent: repo.appendEvent, finishRun: repo.finishRun };
+  return { createRun: repo.createRun, appendEvent: repo.appendEvent, finishRun: repo.finishRun, totalSpendUsd: repo.totalSpendUsd };
 }
 
 /** The production runner (writes runs + run_events to Supabase via lib/platform/repo). */

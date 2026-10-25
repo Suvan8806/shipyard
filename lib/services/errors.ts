@@ -8,6 +8,7 @@ export const ERROR_STATUS: Record<ApiErrorCode, number> = {
   invalid_spec: 409,
   conflict: 409,
   rate_limited: 429,
+  budget_exceeded: 402,
   internal: 500,
 };
 

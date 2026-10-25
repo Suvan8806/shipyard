@@ -6,9 +6,11 @@ import { mergeScenarios, runGate, tryReplay } from '../gate/gate';
 import { dispatchCtx, enqueueGate, pump, reconcileVersion, type DispatchCtx } from '../gate/queue';
 import { finalizeVersion } from '../gate/verdict';
 import { expandTestPacks } from '../gate/packs';
-import type { GateResult } from '../types';
+import { computeCoverage, scenariosForNames } from '../gate/coverage';
+import type { AgentSpec, GateCoverage, GateResult, ScenarioResultSummary } from '../types';
 import type { DeployResponse, RollbackResponse } from '../contracts/api';
 import { ServiceError, notFound } from './errors';
+import { requireBudget } from './budget';
 import { requireAgent } from './agents';
 import { compile, looseScenarios, looseSpec } from './spec';
 
@@ -66,6 +68,7 @@ export async function startDeploy(name: string, actor = 'api'): Promise<StartedD
   const agent = await requireAgent(name);
   const { spec, scenarios, specHash } = compile(agent.draft_spec_yaml, agent.draft_scenarios);
 
+  await requireBudget();
   const recent = await repo.countDeploysSince(new Date(Date.now() - HOUR_MS));
   const max = maxDeploysPerHour();
   if (recent >= max) {
@@ -128,6 +131,41 @@ function scenarioNamesFor(specYaml: string, scenarios: Record<string, string>): 
   }
 }
 
+function specAndScenarios(v: repo.VersionRow): { spec: AgentSpec; known: ReturnType<typeof mergeScenarios> } {
+  let spec: AgentSpec;
+  let own: ReturnType<typeof looseScenarios>;
+  try {
+    ({ spec, scenarios: own } = compile(v.spec_yaml, v.scenarios));
+  } catch {
+    spec = looseSpec(v.spec_yaml);
+    own = looseScenarios(v.scenarios);
+  }
+  return { spec, known: mergeScenarios(spec, own) };
+}
+
+/**
+ * Coverage computed on read from scenario_results + their runs' tool events (no coverage column, so fan-out
+ * gates and inline gates report it the same way). Null if it can't be computed.
+ */
+async function coverageOnRead(v: repo.VersionRow, names: string[], results: ScenarioResultSummary[]): Promise<GateCoverage | null> {
+  try {
+    const { spec, known } = specAndScenarios(v);
+    const scenarios = scenariosForNames(known, names, (n) => ({
+      name: n,
+      description: '',
+      setup: {},
+      conversation: [],
+      assert: [],
+      ...repo.inferScenarioSource(n),
+    }));
+    const events = await repo.listToolEventsForRuns(results.map((r) => r.run_id).filter((x): x is string => Boolean(x)));
+    return computeCoverage(spec, scenarios, events);
+  } catch (e) {
+    console.error('[deploy] coverage failed', e);
+    return null;
+  }
+}
+
 export async function getGateResult(name: string, version: number): Promise<GateResult> {
   if (!Number.isInteger(version) || version < 1) throw new ServiceError('bad_request', 'version must be a positive integer');
   const agent = await requireAgent(name);
@@ -147,7 +185,7 @@ export async function getGateResult(name: string, version: number): Promise<Gate
     current_version: agent.current_version,
     scenario_names: names,
     results,
-    coverage: null,
+    coverage: await coverageOnRead(v, names, results),
   };
 }
 

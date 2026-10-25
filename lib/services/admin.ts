@@ -3,9 +3,11 @@
 import { simulateTraffic } from '../library/simulate';
 import { resetLive } from '../library/reset';
 import * as repo from '../platform/repo';
+import { requireBudget } from './budget';
 import type { ResetLiveResponse, SimulateResponse } from '../contracts/api';
 
 export async function simulate(count: number, origin: string, actor = 'api'): Promise<SimulateResponse> {
+  await requireBudget();
   const r = await simulateTraffic(Math.min(Math.max(count, 1), 10), origin);
   await repo.audit(actor, 'admin.simulate', null, r);
   return r;

@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { generateText, Output, type LanguageModel } from 'ai';
 import { z } from 'zod';
 import type { Scenario } from '../types';
+import { assertBudget } from '../runtime/budget';
 import { fastModel } from './llm';
 
 export const MAX_VARIANTS = 3;
@@ -19,6 +20,7 @@ async function paraphrase(turns: string[], n: number, model?: LanguageModel): Pr
   const key = hashOf(turns, n);
   const hit = cache.get(key);
   if (hit) return hit;
+  if (!model) await assertBudget(); // over budget -> throws -> makeVariants yields no variants
   const schema = z.object({ variants: z.array(z.array(z.string())) });
   const { output } = await generateText({
     model: fastModel(model),
