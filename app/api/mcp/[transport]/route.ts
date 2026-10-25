@@ -13,6 +13,8 @@ import { getRunTrace } from '@/lib/services/runs';
 import { chat } from '@/lib/services/chat';
 import { decide, listApprovals } from '@/lib/services/approvals';
 import { generateTests } from '@/lib/services/tests';
+import { getStress, reconcileStressById, startStress } from '@/lib/services/stress';
+import { getVersionDiff } from '@/lib/services/diff';
 import { isServiceError } from '@/lib/services/errors';
 import { clientIp, isAdminTokenValid, rateLimit, type LimitBucket } from '@/lib/services/guard';
 import type { GateResult } from '@/lib/types';
@@ -330,6 +332,60 @@ const handler = createMcpHandler(
           const validation = await addScenarios(name, scenarios, ACTOR);
           return { scenarios, saved: true, validation };
         }),
+    );
+
+    server.registerTool(
+      'run_stress_test',
+      {
+        title: 'Run stress test',
+        description:
+          "Stress-test an agent's draft as a DRY RUN (never changes the live version). mode=reliability re-runs every test `runs` times (2-5) on the fast profile and reports flaky tests + a reliability %. mode=redteam has the careful model generate `count` (10-60) attacks (prompt injection, impersonation, data exfiltration, money limits, approval bypass) and runs them on throwaway twin DBs; broke_through = attacks that made the agent do the wrong thing. mode=matrix runs the suite on 2-4 `models` and ranks them by pass rate then cost. Refuses (budget_exceeded) if the estimate exceeds the remaining budget. Returns {stress_id, estimated_cost_usd, dashboard_url}; poll get_stress_result.",
+        inputSchema: z.object({
+          name: nameArg,
+          mode: z.enum(['reliability', 'redteam', 'matrix']),
+          runs: z.number().int().min(2).max(5).optional().describe('reliability: reruns per test (default 3)'),
+          count: z.number().int().min(10).max(60).optional().describe('redteam: attacks to generate (default 30)'),
+          models: z.array(z.string()).min(2).max(4).optional().describe('matrix: model strings, e.g. google/gemini-3.5-flash'),
+        }),
+      },
+      async ({ name, mode, runs, count, models }, ctx) =>
+        run(async () => {
+          limit(ctx, 'deploy');
+          const { run: go, ...started } = await startStress(name, { mode, runs, count, models }, ACTOR);
+          const job = go();
+          try {
+            after(() => job);
+          } catch {
+            /* outside a request scope (local scripts) */
+          }
+          return { ...started, dashboard_url: `${originOf(ctx)}/agents/${name}/stress/${started.stress_id}` };
+        }),
+    );
+
+    server.registerTool(
+      'get_stress_result',
+      {
+        title: 'Get stress result',
+        description:
+          'Get a stress test result: status (running/done/error), headline, total cost and the mode report (reliability: per-test passes/runs + flaky; redteam: each attack with status and failed assertions; matrix: pass rate, cost and latency per model).',
+        inputSchema: z.object({ name: nameArg, stress_id: z.string().regex(/^s\d+$/).describe('e.g. "s3"') }),
+      },
+      async ({ name, stress_id }) =>
+        run(async () => {
+          await reconcileStressById(name, stress_id);
+          return getStress(name, stress_id);
+        }),
+    );
+
+    server.registerTool(
+      'diff_versions',
+      {
+        title: 'Diff versions',
+        description:
+          'Compare two deployed versions of an agent: a line diff of the spec YAML plus every test whose status changed (newly_failing, fixed, still_failing, added, removed, still_passing).',
+        inputSchema: z.object({ name: nameArg, from: z.number().int().min(1), to: z.number().int().min(1) }),
+      },
+      async ({ name, from, to }) => run(() => getVersionDiff(name, from, to)),
     );
   },
   { serverInfo: { name: 'shipyard', version: '0.2.0' } },
