@@ -10,7 +10,7 @@ import {
   VERSION_DIFF_1_2,
 } from '@/lib/mock/fixtures';
 import { getAgent, MockError } from '../mock';
-import type { StressRequest, StressResult, StressStartResponse, StressSummary, VersionDiff } from './contract';
+import type { StressRequest, StressResult, StressStarted, StressSummary, VersionDiff } from './contract';
 import { estimateCost, shortModel } from './estimate';
 
 /** How long a simulated stress job takes. */
@@ -162,7 +162,7 @@ export function getStress(agent: string, id: string): StressResult {
   return hit;
 }
 
-export function startStress(agent: string, req: StressRequest, tests: number): StressStartResponse {
+export function startStress(agent: string, req: StressRequest, tests: number): StressStarted {
   getAgent(agent);
   const estimate = estimateCost({ mode: req.mode, tests, runs: req.runs, count: req.count, models: req.models?.length });
   const left = MOCK_BUDGET_USD - mockSpend;

@@ -9,7 +9,8 @@ import path from 'node:path';
 import { run } from '../cli/program';
 import type { Io } from '../cli/lib/context';
 import { stripAnsi } from '../cli/lib/ansi';
-import { estimateStressCost, type StressResult, type VersionDiff } from '../cli/lib/stress-types';
+import type { StressResult, VersionDiff } from '../lib/contracts/stress';
+import { estimateStressCost } from '../cli/lib/stress-types';
 import type { GateResult, ScenarioResultSummary } from '../lib/types';
 
 const SHOW = process.argv.includes('--show');

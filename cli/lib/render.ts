@@ -2,7 +2,7 @@
 import type { AgentSummary, RunTrace } from '../../lib/contracts/api';
 import type { Row, TableDiff, ValidationResult } from '../../lib/types';
 import { type Style, bar, money, oneLine, padEnd, pct, table, truncate } from './ansi';
-import type { StressResult, StressSummary, VersionDiff } from './stress-types';
+import type { StressResult, StressSummary, VersionDiff } from '../../lib/contracts/stress';
 
 export function renderAgents(rows: AgentSummary[], st: Style): string {
   if (rows.length === 0) return st.dim('No agents yet.');

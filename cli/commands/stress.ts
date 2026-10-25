@@ -4,15 +4,15 @@ import { type Ctx, CliExit, EXIT, sleep } from '../lib/context';
 import { ApiCallError, enc } from '../lib/http';
 import { renderStress, renderStressList, renderVersionDiff } from '../lib/render';
 import { money } from '../lib/ansi';
-import {
-  type StressMode,
-  type StressRequest,
-  type StressResult,
-  type StressStartResponse,
-  type StressSummary,
-  type VersionDiff,
-  estimateStressCost,
-} from '../lib/stress-types';
+import type {
+  StressMode,
+  StressRequest,
+  StressResult,
+  StressStarted,
+  StressSummary,
+  VersionDiff,
+} from '../../lib/contracts/stress';
+import { estimateStressCost } from '../lib/stress-types';
 
 const MODES: StressMode[] = ['reliability', 'redteam', 'matrix'];
 const NOT_DEPLOYED = 'stress lab not deployed on this server (it ships with the dev-stress branch). Try a preview URL with --api.';
@@ -120,7 +120,7 @@ export async function stressCommand(ctx: Ctx, name: string, opts: StressOpts): P
       const est = estimateStressCost(req, tests ?? 46);
       ctx.io.out(ctx.st.dim(`estimate: ${est.runs} scenario runs ≈ ${money(est.usd, 2)}${tests ? '' : ' (assuming ~46 tests)'} · the server re-checks this against the remaining budget`));
     }
-    const start = await ctx.client.post<StressStartResponse>(base, req);
+    const start = await ctx.client.post<StressStarted>(base, req);
     if (opts.watch === false) {
       ctx.io.out(ctx.json ? JSON.stringify(start, null, 2) : `stress ${req.mode} started: ${ctx.st.bold(start.stress_id)}  (shipyard stress ${name} --id ${start.stress_id})`);
       return EXIT.ok;

@@ -5,7 +5,7 @@ watch ~46 tests run live on throwaway twin databases, then read the verdict, tra
 
 ```bash
 npx tsx cli/shipyard.ts --help          # from the repo root
-# once package.json has "bin": { "shipyard": "cli/shipyard.ts" } and `npm link`:  shipyard --help
+npm run shipyard -- --help              # same thing via the package.json script
 ```
 
 ## Configuration

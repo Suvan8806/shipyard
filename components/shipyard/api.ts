@@ -24,7 +24,7 @@ import type {
 import type { ChatMessage, GateResult } from '@/lib/types';
 import * as mock from './mock';
 import * as stressMock from './stress/mock-stress';
-import type { StressRequest, StressResult, StressStartResponse, StressSummary, VersionDiff } from './stress/contract';
+import type { StressRequest, StressResult, StressStarted, StressSummary, VersionDiff } from './stress/contract';
 
 export const USE_MOCKS = process.env.NEXT_PUBLIC_USE_MOCKS === '1';
 /** Set when local dev should read a remote deployment's API (see the header comment). */
@@ -243,7 +243,7 @@ export async function getBudget(): Promise<{ spend_usd: number | null; budget_us
 }
 
 /** Starts a dry-run stress job. `tests` only feeds the mock's cost check; the server counts its own. */
-export function startStress(name: string, req: StressRequest, tests = 46): Promise<StressStartResponse> {
+export function startStress(name: string, req: StressRequest, tests = 46): Promise<StressStarted> {
   return USE_MOCKS
     ? mockedStress(() => stressMock.startStress(name, req, tests), 400)
     : request(`/api/agents/${enc(name)}/stress`, { method: 'POST', body: req });

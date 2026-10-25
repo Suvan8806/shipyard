@@ -12,7 +12,8 @@
     "seed": "tsx scripts/seed-agents.ts",
     "seed:history": "tsx scripts/seed-history.ts",
     "simulate": "tsx scripts/simulate-traffic.ts",
-    "reset-live": "tsx scripts/reset-live.ts"
+    "reset-live": "tsx scripts/reset-live.ts",
+    "shipyard": "tsx cli/shipyard.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.88",
