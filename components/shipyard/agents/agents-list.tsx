@@ -1,158 +1,222 @@
 'use client';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
-import { Loader2, Rocket } from 'lucide-react';
-import { toast } from 'sonner';
+import type { ReactNode } from 'react';
+import { ArrowRight, Bot, Loader2 } from 'lucide-react';
 import type { AgentSummary } from '@/lib/contracts/api';
 import { Button } from '@/components/ui/button';
-import { deploy, getAgents } from '../api';
+import { getAgents } from '../api';
 import { fmtCost, fmtPct, fmtRelative } from '../format';
+import { EmptyState, ErrorState, StaleNotice, TableSkeleton } from '../states';
 import { StatusPill } from '../status';
 import { useData, useNow } from '../use-data';
 import { ActivityFeed, SimulateTrafficButton } from '../activity/activity';
+import { useDeploy } from './use-deploy';
 
-function DeployButton({ name }: { name: string }) {
-  const router = useRouter();
-  const [busy, setBusy] = useState(false);
+const POLL_MS = 5000;
+const agentHref = (a: AgentSummary) => `/agents/${encodeURIComponent(a.name)}`;
+const gateHref = (a: AgentSummary, v: number) => `${agentHref(a)}/versions/${v}`;
+
+function RowAction({ a }: { a: AgentSummary }) {
+  const runningVersion = a.latest_status === 'running' ? a.latest_version : null;
+  const { busy, start } = useDeploy(a.name, runningVersion);
+  if (runningVersion !== null) {
+    return (
+      <Link
+        href={gateHref(a, runningVersion)}
+        onClick={(e) => e.stopPropagation()}
+        className="inline-flex items-center gap-1 text-sm font-semibold whitespace-nowrap text-running hover:underline"
+      >
+        Gate running <ArrowRight className="size-3.5" aria-hidden />
+      </Link>
+    );
+  }
   return (
     <Button
       size="sm"
-      variant="outline"
+      variant="ghost"
       disabled={busy}
-      onClick={async (e) => {
-        e.preventDefault();
+      onClick={(e) => {
         e.stopPropagation();
-        setBusy(true);
-        try {
-          const r = await deploy(name);
-          router.push(`/agents/${name}/versions/${r.version}`);
-        } catch (err) {
-          toast.error('Deploy failed', { description: err instanceof Error ? err.message : String(err) });
-          setBusy(false);
-        }
+        void start();
       }}
+      onKeyDown={(e) => e.stopPropagation()}
     >
-      {busy ? <Loader2 className="animate-spin" /> : <Rocket />} Deploy
+      {busy && <Loader2 className="animate-spin" aria-hidden />}
+      {busy ? 'Deploying…' : 'Deploy'}
     </Button>
   );
 }
 
-function Summary({ agents }: { agents: AgentSummary[] }) {
-  const live = agents.filter((a) => a.current_version !== null).length;
+/** Live version, plus a note when the newest gate is a different version. */
+function LiveVersion({ a }: { a: AgentSummary }) {
+  const differs = a.latest_version !== null && a.latest_version !== a.current_version;
+  return (
+    <div className="flex flex-col">
+      <span className={a.current_version === null ? 'text-muted-foreground' : 'font-mono font-semibold'}>
+        {a.current_version === null ? 'none' : `v${a.current_version}`}
+      </span>
+      {differs && a.latest_version !== null && (
+        <Link
+          href={gateHref(a, a.latest_version)}
+          onClick={(e) => e.stopPropagation()}
+          className="text-xs whitespace-nowrap text-muted-foreground hover:text-foreground hover:underline"
+        >
+          latest <span className="font-mono">v{a.latest_version}</span> · {a.latest_status}
+        </Link>
+      )}
+    </div>
+  );
+}
+
+function CounterStrip({ agents }: { agents: AgentSummary[] }) {
+  const serving = agents.filter((a) => a.current_version !== null).length;
   const blocked = agents.filter((a) => a.latest_status === 'blocked').length;
+  const running = agents.filter((a) => a.latest_status === 'running').length;
   const runs = agents.reduce((s, a) => s + a.runs_24h, 0);
-  const items = [
-    { label: 'Agents serving', value: `${live}/${agents.length}` },
-    { label: 'Deploys blocked', value: String(blocked), red: blocked > 0 },
+  const items: { label: string; value: string; cls?: string }[] = [
+    { label: 'Serving', value: `${serving}/${agents.length}` },
+    { label: 'Gates running', value: String(running), cls: running > 0 ? 'text-running' : undefined },
+    { label: 'Deploys blocked', value: String(blocked), cls: blocked > 0 ? 'text-fail' : undefined },
     { label: 'Live runs, 24h', value: runs.toLocaleString() },
-    { label: 'Teams', value: String(new Set(agents.map((a) => a.team)).size) },
   ];
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+    <dl className="grid grid-cols-2 divide-border rounded-md border bg-card sm:grid-cols-4 sm:divide-x">
       {items.map((i) => (
-        <div key={i.label} className="rounded-xl border bg-card p-3">
-          <div className="text-xs text-muted-foreground">{i.label}</div>
-          <div className={`font-mono text-2xl font-semibold tabular-nums ${i.red ? 'sy-text-red' : ''}`}>{i.value}</div>
+        <div key={i.label} className="flex flex-col gap-0.5 px-4 py-3">
+          <dt className="field-label">{i.label}</dt>
+          <dd className={`font-mono text-xl font-semibold tabular-nums ${i.cls ?? ''}`}>{i.value}</dd>
         </div>
       ))}
+    </dl>
+  );
+}
+
+function AgentRow({ a, now }: { a: AgentSummary; now: number }) {
+  const router = useRouter();
+  const open = () => router.push(agentHref(a));
+  return (
+    <tr
+      tabIndex={0}
+      onClick={open}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') open();
+      }}
+      className="cursor-pointer outline-none hover:bg-accent focus-visible:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+    >
+      <td className="px-4 py-2.5">
+        <Link href={agentHref(a)} onClick={(e) => e.stopPropagation()} className="font-mono font-semibold whitespace-nowrap hover:underline">
+          {a.name}
+        </Link>
+        <div className="text-xs text-muted-foreground">{a.team ?? 'No team'}{a.owner ? ` · ${a.owner}` : ''}</div>
+      </td>
+      <td className="px-3 py-2.5">
+        <LiveVersion a={a} />
+      </td>
+      <td className="px-3 py-2.5">
+        <StatusPill status={a.latest_status} />
+      </td>
+      <td className="px-3 py-2.5 text-right font-mono tabular-nums">{fmtPct(a.pass_rate)}</td>
+      <td className="px-3 py-2.5 text-right font-mono tabular-nums">{fmtCost(a.avg_cost_usd)}</td>
+      <td className="px-3 py-2.5 text-right font-mono tabular-nums">{a.runs_24h.toLocaleString()}</td>
+      <td className="px-3 py-2.5 text-right text-xs whitespace-nowrap text-muted-foreground">{fmtRelative(a.updated_at, now)}</td>
+      <td className="px-3 py-2.5 text-right">
+        <RowAction a={a} />
+      </td>
+    </tr>
+  );
+}
+
+function AgentCard({ a }: { a: AgentSummary }) {
+  return (
+    <li className="flex flex-col gap-1.5 p-4">
+      <div className="flex items-center justify-between gap-2">
+        <Link href={agentHref(a)} className="truncate font-mono font-semibold hover:underline">
+          {a.name}
+        </Link>
+        <StatusPill status={a.latest_status} />
+      </div>
+      <div className="text-xs text-muted-foreground">
+        {a.team ?? 'No team'} · live <span className="font-mono">{a.current_version === null ? 'none' : `v${a.current_version}`}</span>
+        {a.latest_version !== null && a.latest_version !== a.current_version && (
+          <> · latest <span className="font-mono">v{a.latest_version}</span></>
+        )}
+      </div>
+      <div className="flex items-center justify-between gap-2 font-mono text-xs">
+        <span>
+          {fmtPct(a.pass_rate)} pass · {fmtCost(a.avg_cost_usd)}/run
+        </span>
+        <RowAction a={a} />
+      </div>
+    </li>
+  );
+}
+
+function AgentsTable({ agents, now }: { agents: AgentSummary[]; now: number }) {
+  return (
+    <div className="min-w-0 overflow-x-auto rounded-md border bg-card">
+      <table className="hidden w-full text-sm md:table">
+        <thead className="border-b bg-muted text-left">
+          <tr>
+            <th className="field-label px-4 py-2.5">Agent</th>
+            <th className="field-label px-3 py-2.5 whitespace-nowrap">Live version</th>
+            <th className="field-label px-3 py-2.5">Status</th>
+            <th className="field-label px-3 py-2.5 text-right whitespace-nowrap">Pass rate</th>
+            <th className="field-label px-3 py-2.5 text-right whitespace-nowrap">Avg / run</th>
+            <th className="field-label px-3 py-2.5 text-right whitespace-nowrap">Runs 24h</th>
+            <th className="field-label px-3 py-2.5 text-right">Updated</th>
+            <th className="px-3 py-2.5">
+              <span className="sr-only">Actions</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody className="divide-y">
+          {agents.map((a) => (
+            <AgentRow key={a.name} a={a} now={now} />
+          ))}
+        </tbody>
+      </table>
+      <ul className="divide-y md:hidden">
+        {agents.map((a) => (
+          <AgentCard key={a.name} a={a} />
+        ))}
+      </ul>
     </div>
   );
 }
 
 export function AgentsList() {
-  const { data, error, loading, refetch } = useData('agents', getAgents, { pollMs: 4000 });
+  const { data, error, loading, refetch } = useData('agents', getAgents, { pollMs: POLL_MS });
   const now = useNow(30000);
-  const agents = data ?? [];
+
+  let body: ReactNode;
+  if (loading && !data) body = <TableSkeleton rows={8} cols={6} />;
+  else if (error && !data) body = <ErrorState title="Couldn't load agents" error={error} onRetry={refetch} />;
+  else if (data && data.length === 0) {
+    body = (
+      <EmptyState icon={<Bot />} title="No agents yet">
+        Create one from a 16-line spec, or ask Claude Code: &ldquo;create a support agent and deploy it.&rdquo;
+      </EmptyState>
+    );
+  } else body = <AgentsTable agents={data ?? []} now={now} />;
+
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Agents</h1>
-          <p className="text-muted-foreground">Every change is tested on throwaway twin databases before it reaches members.</p>
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-bold tracking-tight text-balance">
+            Agents {data && <span className="font-mono font-semibold text-muted-foreground tabular-nums">{data.length}</span>}
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Every change is tested on throwaway twin databases before it reaches members. Create agents from any MCP client.
+          </p>
         </div>
         <SimulateTrafficButton onDone={() => void refetch()} />
       </header>
-      {data && <Summary agents={agents} />}
-      {error && <p className="sy-pill-red rounded-xl border p-4 text-sm">Could not load agents: {error.message}</p>}
-      <div className="grid gap-6 2xl:grid-cols-[1fr_340px]">
-        <div className="min-w-0 overflow-x-auto rounded-xl border bg-card">
-          {/* Desktop table */}
-          <table className="hidden w-full text-sm md:table">
-            <thead className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
-              <tr>
-                <th className="px-4 py-2.5 font-medium">Agent</th>
-                <th className="px-3 py-2.5 font-medium whitespace-nowrap">Team · owner</th>
-                <th className="px-3 py-2.5 font-medium">Serving</th>
-                <th className="px-3 py-2.5 font-medium">Latest</th>
-                <th className="px-3 py-2.5 text-right font-medium whitespace-nowrap">Pass rate</th>
-                <th className="px-3 py-2.5 text-right font-medium whitespace-nowrap">Avg / run</th>
-                <th className="px-3 py-2.5 text-right font-medium">Updated</th>
-                <th className="px-3 py-2.5" />
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {loading && !data &&
-                Array.from({ length: 6 }, (_, i) => (
-                  <tr key={i}>
-                    <td colSpan={8} className="px-4 py-3">
-                      <div className="h-5 animate-pulse rounded bg-muted" />
-                    </td>
-                  </tr>
-                ))}
-              {agents.map((a) => (
-                <tr key={a.name} className="group hover:bg-muted/40">
-                  <td className="px-4 py-3">
-                    <Link href={`/agents/${a.name}`} className="font-mono font-medium whitespace-nowrap hover:underline">
-                      {a.name}
-                    </Link>
-                    <div className="line-clamp-1 max-w-xs text-xs text-muted-foreground">{a.goal}</div>
-                  </td>
-                  <td className="px-3 py-3">
-                    <div>{a.team ?? '—'}</div>
-                    <div className="text-xs text-muted-foreground">{a.owner ?? ''}</div>
-                  </td>
-                  <td className="px-3 py-3 font-mono">{a.current_version ? `v${a.current_version}` : 'none'}</td>
-                  <td className="px-3 py-3">
-                    <Link
-                      href={a.latest_version ? `/agents/${a.name}/versions/${a.latest_version}` : `/agents/${a.name}`}
-                      className="inline-flex items-center gap-1.5"
-                    >
-                      <span className="font-mono text-xs text-muted-foreground">{a.latest_version ? `v${a.latest_version}` : ''}</span>
-                      <StatusPill status={a.latest_status} />
-                    </Link>
-                  </td>
-                  <td className="px-3 py-3 text-right font-mono tabular-nums">{fmtPct(a.pass_rate)}</td>
-                  <td className="px-3 py-3 text-right font-mono tabular-nums">{fmtCost(a.avg_cost_usd)}</td>
-                  <td className="px-3 py-3 text-right text-xs text-muted-foreground">{fmtRelative(a.updated_at, now)}</td>
-                  <td className="px-3 py-3 text-right">
-                    <DeployButton name={a.name} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {/* Mobile cards */}
-          <ul className="divide-y md:hidden">
-            {agents.map((a) => (
-              <li key={a.name} className="flex flex-col gap-1.5 p-4">
-                <div className="flex items-center justify-between gap-2">
-                  <Link href={`/agents/${a.name}`} className="truncate font-mono font-medium">
-                    {a.name}
-                  </Link>
-                  <StatusPill status={a.latest_status} />
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  {a.team} · {a.owner} · serving {a.current_version ? `v${a.current_version}` : 'none'}
-                </div>
-                <div className="flex items-center justify-between font-mono text-xs">
-                  <span>{fmtPct(a.pass_rate)} pass · {fmtCost(a.avg_cost_usd)}/run</span>
-                  <DeployButton name={a.name} />
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
+      {data && data.length > 0 && <CounterStrip agents={data} />}
+      {data && <StaleNotice error={error} onRetry={refetch} />}
+      <div className="grid gap-6 2xl:grid-cols-[minmax(0,1fr)_360px]">
+        {body}
         <ActivityFeed limit={8} />
       </div>
     </div>

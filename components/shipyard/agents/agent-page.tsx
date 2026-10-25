@@ -1,189 +1,168 @@
 'use client';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
-import { ArrowLeft, Loader2, RotateCcw, Rocket } from 'lucide-react';
-import { toast } from 'sonner';
+import { ArrowLeft, FileText } from 'lucide-react';
 import { parse as parseYaml } from 'yaml';
-import type { AgentDetail } from '@/lib/contracts/api';
-import type { ValidationResult } from '@/lib/types';
-import { Button } from '@/components/ui/button';
+import type { AgentDetail, LibraryResponse } from '@/lib/contracts/api';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { deploy, getAgent, rollback } from '../api';
-import { fmtCost, fmtDateTime, fmtPct } from '../format';
-import { StatusPill } from '../status';
+import { getAgent, getLibrary } from '../api';
+import { EmptyState, ErrorState, Skeleton, StaleNotice } from '../states';
 import { useData } from '../use-data';
 import { ActivityFeed } from '../activity/activity';
+import { AgentHeader } from './agent-header';
 import { ChatPanel } from './chat-panel';
-import { GenerateTestsDialog } from './generate-tests-dialog';
 import { parseScenario, ScenarioItem } from './scenario-list';
-import { SpecEditor } from './spec-editor';
+import { SpecEditor, type SpecStatus } from './spec-editor';
+import { VersionsTable } from './versions-table';
 
-function packsOf(yaml: string): string[] {
+const POLL_MS = 5000;
+
+interface SpecParts {
+  profile: string | null;
+  inherit: string[];
+  packs: string[];
+}
+
+function specParts(yaml: string): SpecParts {
   try {
-    const s = parseYaml(yaml) as { test_packs?: unknown };
-    return Array.isArray(s?.test_packs) ? s.test_packs.map(String) : [];
+    const s = parseYaml(yaml) as { profile?: unknown; inherit?: unknown; test_packs?: unknown } | null;
+    const list = (v: unknown) => (Array.isArray(v) ? v.map(String) : []);
+    return { profile: typeof s?.profile === 'string' ? s.profile : null, inherit: list(s?.inherit), packs: list(s?.test_packs) };
   } catch {
-    return [];
+    return { profile: null, inherit: [], packs: [] };
   }
 }
 
-function VersionsTable({ d, onRollback }: { d: AgentDetail; onRollback: () => void }) {
+/** "12 tests" when the library is loaded, else "3 scenarios plus 5 test packs". */
+function testCountLabel(scenarios: number, packs: string[], lib: LibraryResponse | null): string {
+  const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
+  if (lib) {
+    const fromPacks = packs.reduce((n, p) => n + (lib.packs.find((x) => x.name === p)?.templates ?? 0), 0);
+    return plural(scenarios + fromPacks, 'test');
+  }
+  return packs.length ? `${plural(scenarios, 'scenario')} plus ${plural(packs.length, 'test pack')}` : plural(scenarios, 'scenario');
+}
+
+function InheritedChips({ parts }: { parts: SpecParts }) {
+  const groups: [string, string[]][] = [
+    ['profile', parts.profile ? [parts.profile] : []],
+    ['inherit', parts.inherit],
+    ['test_packs', parts.packs],
+  ];
+  const shown = groups.filter(([, v]) => v.length > 0);
+  if (shown.length === 0) return null;
   return (
-    <div className="overflow-x-auto rounded-xl border">
-      <table className="w-full min-w-[520px] text-sm">
-        <thead className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
-          <tr>
-            <th className="px-3 py-2 font-medium">Version</th>
-            <th className="px-3 py-2 font-medium">Gate</th>
-            <th className="px-3 py-2 text-right font-medium">Pass rate</th>
-            <th className="px-3 py-2 text-right font-medium">Gate cost</th>
-            <th className="px-3 py-2 font-medium">Started</th>
-            <th className="px-3 py-2" />
-          </tr>
-        </thead>
-        <tbody className="divide-y">
-          {d.versions.map((v) => (
-            <tr key={v.version} className="hover:bg-muted/40">
-              <td className="px-3 py-2.5 font-mono">
-                <Link href={`/agents/${d.name}/versions/${v.version}`} className="font-medium hover:underline">
-                  v{v.version}
-                </Link>
-                {v.version === d.current_version && <span className="sy-text-green ml-2 text-xs font-sans font-semibold">serving</span>}
-              </td>
-              <td className="px-3 py-2.5">
-                <StatusPill status={v.status} />
-              </td>
-              <td className="px-3 py-2.5 text-right font-mono tabular-nums">{fmtPct(v.pass_rate)}</td>
-              <td className="px-3 py-2.5 text-right font-mono tabular-nums">{fmtCost(v.total_cost_usd, 3)}</td>
-              <td className="px-3 py-2.5 text-xs text-muted-foreground">{fmtDateTime(v.started_at)}</td>
-              <td className="px-3 py-2.5 text-right">
-                {v.version === d.current_version && d.versions.some((x) => x.status === 'live' && x.version < v.version) && (
-                  <Button size="sm" variant="outline" onClick={onRollback}>
-                    <RotateCcw /> Rollback
-                  </Button>
-                )}
-              </td>
-            </tr>
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+      {shown.map(([label, values]) => (
+        <span key={label} className="flex flex-wrap items-center gap-1.5">
+          <span className="font-mono text-muted-foreground">{label}:</span>
+          {values.map((v) => (
+            <Link key={v} href="/library" className="rounded-sm border bg-muted px-1.5 py-0.5 font-mono text-foreground hover:border-primary hover:text-primary">
+              {v}
+            </Link>
           ))}
-          {d.versions.length === 0 && (
-            <tr>
-              <td colSpan={6} className="p-6 text-center text-muted-foreground">No versions yet.</td>
-            </tr>
-          )}
-        </tbody>
-      </table>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function PageSkeleton() {
+  return (
+    <div className="mx-auto flex max-w-7xl flex-col gap-6" aria-busy="true" aria-label="Loading agent">
+      <Skeleton className="h-4 w-20" />
+      <div className="flex flex-col gap-2">
+        <Skeleton className="h-8 w-64" />
+        <Skeleton className="h-4 w-80" />
+      </div>
+      <div className="grid gap-6 xl:grid-cols-12">
+        <Skeleton className="h-[420px] xl:col-span-7" />
+        <Skeleton className="h-[420px] xl:col-span-5" />
+      </div>
+    </div>
+  );
+}
+
+function ScenariosTab({ d, packs, testCount }: { d: AgentDetail; packs: string[]; testCount: string }) {
+  const scenarios = useMemo(() => Object.entries(d.draft_scenarios ?? {}).map(([f, y]) => parseScenario(f, y)), [d.draft_scenarios]);
+  const packNote = packs.length > 0 && (
+    <>
+      {' '}Shared test packs <span className="font-mono">{packs.join(', ')}</span> are expanded at deploy time.
+    </>
+  );
+  if (scenarios.length === 0) {
+    return (
+      <EmptyState icon={<FileText />} title="No hand-written scenarios">
+        {packs.length > 0 ? <>The gate still runs {testCount} from shared packs.{packNote}</> : 'Generate tests from the spec, or add scenario files to the draft.'}
+      </EmptyState>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-sm text-muted-foreground">
+        {scenarios.length} hand-written {scenarios.length === 1 ? 'scenario' : 'scenarios'}, {testCount} in all.{packNote}
+      </p>
+      <ul className="flex flex-col gap-2">
+        {scenarios.map((s) => (
+          <ScenarioItem key={s.file} s={s} />
+        ))}
+      </ul>
     </div>
   );
 }
 
 export function AgentPage({ name }: { name: string }) {
-  const router = useRouter();
-  const { data: d, error, refetch } = useData(`agent:${name}`, () => getAgent(name));
-  const [yaml, setYaml] = useState<string | null>(null);
-  const [validation, setValidation] = useState<ValidationResult | null>(null);
-  const [deploying, setDeploying] = useState(false);
+  const { data: d, error, loading, refetch } = useData(`agent:${name}`, () => getAgent(name), {
+    pollMs: POLL_MS,
+    shouldPoll: (x) => !!x?.versions.some((v) => v.status === 'running'),
+  });
+  const { data: lib } = useData('library', getLibrary);
+  const [spec, setSpec] = useState<SpecStatus | null>(null);
 
-  const currentYaml = yaml ?? d?.draft_spec_yaml ?? '';
-  const currentValidation = yaml === null ? (d?.validation ?? null) : validation;
-  const scenarios = useMemo(
-    () => Object.entries(d?.draft_scenarios ?? {}).map(([f, y]) => parseScenario(f, y)),
-    [d?.draft_scenarios],
-  );
-  const packs = useMemo(() => packsOf(currentYaml), [currentYaml]);
+  const yaml = spec?.yaml ?? d?.draft_spec_yaml ?? '';
+  const parts = useMemo(() => specParts(yaml), [yaml]);
 
-  if (error) return <p className="sy-pill-red rounded-xl border p-4">Could not load {name}: {error.message}</p>;
-  if (!d) return <div className="mx-auto h-96 max-w-7xl animate-pulse rounded-2xl bg-muted" />;
+  if (loading && !d) return <PageSkeleton />;
+  if (error && !d) {
+    return (
+      <div className="mx-auto flex max-w-7xl flex-col gap-4">
+        <Link href="/agents" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+          <ArrowLeft className="size-4" aria-hidden /> Agents
+        </Link>
+        <ErrorState title={`Couldn't load ${name}`} error={error} onRetry={refetch} />
+      </div>
+    );
+  }
+  if (!d) return null;
 
-  const canDeploy = !!currentValidation?.ok && !deploying;
-  const doDeploy = async () => {
-    setDeploying(true);
-    try {
-      const r = await deploy(name);
-      router.push(`/agents/${name}/versions/${r.version}`);
-    } catch (e) {
-      toast.error('Deploy failed', { description: e instanceof Error ? e.message : String(e) });
-      setDeploying(false);
-    }
-  };
-  const doRollback = async () => {
-    try {
-      const r = await rollback(name);
-      toast.success(`Rolled back. v${r.current_version} is serving.`);
-      void refetch();
-    } catch (e) {
-      toast.error('Rollback failed', { description: e instanceof Error ? e.message : String(e) });
-    }
-  };
-  const latest = d.versions[0];
+  const scenarioCount = Object.keys(d.draft_scenarios ?? {}).length;
+  const testCount = testCountLabel(scenarioCount, parts.packs, lib);
+  const validation = spec ? spec.validation : d.validation;
+  const save = spec?.save ?? 'idle';
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-6">
-      <header className="flex flex-col gap-3">
-        <Link href="/agents" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="size-4" /> Agents
-        </Link>
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="font-mono text-2xl font-bold tracking-tight sm:text-3xl">{d.name}</h1>
-          {latest && (
-            <Link href={`/agents/${name}/versions/${latest.version}`} className="inline-flex items-center gap-1.5">
-              <span className="font-mono text-sm text-muted-foreground">v{latest.version}</span>
-              <StatusPill status={latest.status} />
-            </Link>
-          )}
-          <div className="flex w-full gap-2 sm:ml-auto sm:w-auto">
-            <GenerateTestsDialog name={name} onAccepted={() => void refetch()} />
-            <Button onClick={doDeploy} disabled={!canDeploy} title={canDeploy ? 'Run the gate on a new version' : 'Fix spec errors first'}>
-              {deploying ? <Loader2 className="animate-spin" /> : <Rocket />} Deploy
-            </Button>
-          </div>
-        </div>
-        <p className="text-sm text-muted-foreground">
-          {d.team ?? 'No team'} · owner {d.owner ?? '—'} · serving{' '}
-          <span className="font-mono">{d.current_version ? `v${d.current_version}` : 'none'}</span>
-        </p>
-      </header>
+      <AgentHeader d={d} validation={validation} save={save} onScenariosChanged={() => void refetch()} />
+      <StaleNotice error={error} onRetry={refetch} />
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
-        <section className="flex min-w-0 flex-col gap-2" aria-label="Spec">
-          <h2 className="text-sm font-semibold">agent.yaml <span className="font-normal text-muted-foreground">(draft)</span></h2>
-          <SpecEditor
-            key={d.name}
-            name={name}
-            initial={d.draft_spec_yaml}
-            initialValidation={d.validation}
-            onChange={(y, v) => {
-              setYaml(y);
-              setValidation(v);
-            }}
-          />
+      <div className="grid gap-6 xl:grid-cols-12">
+        <section className="flex min-w-0 flex-col gap-3 xl:col-span-7" aria-label="Spec">
+          <SpecEditor key={d.name} name={name} initial={d.draft_spec_yaml} initialValidation={d.validation} onStatus={setSpec} />
+          <InheritedChips parts={parts} />
         </section>
 
-        <Tabs defaultValue="scenarios" className="min-w-0">
+        <Tabs defaultValue="scenarios" className="min-w-0 xl:col-span-5">
           <TabsList>
             <TabsTrigger value="scenarios">Scenarios</TabsTrigger>
             <TabsTrigger value="versions">Versions</TabsTrigger>
             <TabsTrigger value="chat">Chat</TabsTrigger>
             <TabsTrigger value="activity">Activity</TabsTrigger>
           </TabsList>
-          <TabsContent value="scenarios" className="flex flex-col gap-3 pt-3">
-            <p className="text-sm text-muted-foreground">
-              {scenarios.length} hand-written {scenarios.length === 1 ? 'scenario' : 'scenarios'}
-              {packs.length > 0 && (
-                <>
-                  {' '}+ shared packs <span className="font-mono">{packs.join(', ')}</span>, expanded at deploy time
-                </>
-              )}
-              .
-            </p>
-            <ul className="flex flex-col gap-2">
-              {scenarios.map((s) => (
-                <ScenarioItem key={s.file} s={s} />
-              ))}
-            </ul>
+          <TabsContent value="scenarios" className="pt-3">
+            <ScenariosTab d={d} packs={parts.packs} testCount={testCount} />
           </TabsContent>
           <TabsContent value="versions" className="pt-3">
-            <VersionsTable d={d} onRollback={doRollback} />
+            <VersionsTable d={d} testCount={testCount} onChanged={() => void refetch()} />
           </TabsContent>
           <TabsContent value="chat" className="pt-3">
             <ChatPanel name={name} liveVersion={d.current_version} />

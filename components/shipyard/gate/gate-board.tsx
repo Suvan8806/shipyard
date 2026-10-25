@@ -1,289 +1,183 @@
 'use client';
+// Gate board (design/direction.md 7.1). Polls every 1 s while the gate is running; renders placeholders for
+// scenarios that have no result row yet; distinguishes infrastructure errors from FAIL verdicts.
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
-import { ArrowLeft, ArrowUpRight, Check, OctagonX, PlayCircle, RotateCcw, ShieldAlert, Sparkles, X } from 'lucide-react';
-import { toast } from 'sonner';
-import type { GateResult, ScenarioResultSummary } from '@/lib/types';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { CircleCheck, CircleDashed, OctagonX, PlayCircle, Sparkles, TriangleAlert } from 'lucide-react';
+import type { GateResult } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { getGate, replayGate, rollback, USE_MOCKS } from '../api';
+import { getGate, replayGate, USE_MOCKS } from '../api';
 import { fmtCost, fmtDuration, fmtPct } from '../format';
+import { ErrorState, Skeleton, StaleNotice } from '../states';
 import { StatusPill } from '../status';
 import { useData, useNow } from '../use-data';
-import { GateCard, shortName, verdicts } from './gate-card';
-import { MiniDiff } from './mini-diff';
+import { GateCard } from './gate-card';
+import { CatchSpotlight, RunningPanel, VerdictBanner } from './gate-banner';
+import { boardResults, countResults, groupResults, tagCodes, verdicts, type GateCounts } from './gate-model';
 
 type Filter = 'all' | 'failed' | 'critical';
+/** No tag finished for this long while running: switch to the calm "still running" copy. */
+const STALL_MS = 45_000;
 
-interface Group {
-  key: string;
-  title: string;
-  subtitle: string;
-  results: ScenarioResultSummary[];
+/** Timestamp of the last time the number of finished tags changed. */
+function useLastProgress(done: number | undefined): number {
+  const [at, setAt] = useState(() => Date.now());
+  const prev = useRef(done);
+  useEffect(() => {
+    if (prev.current !== done) {
+      prev.current = done;
+      setAt(Date.now());
+    }
+  }, [done]);
+  return at;
 }
 
-function groupResults(results: ScenarioResultSummary[]): Group[] {
-  const spec = results.filter((r) => r.source === 'spec');
-  const gen = results.filter((r) => r.source === 'generated');
-  const packs = new Map<string, ScenarioResultSummary[]>();
-  for (const r of results) {
-    if (r.source !== 'pack') continue;
-    const name = r.pack ?? 'pack';
-    packs.set(name, [...(packs.get(name) ?? []), r]);
-  }
-  const groups: Group[] = [];
-  if (spec.length) groups.push({ key: 'spec', title: 'From the spec', subtitle: 'hand-written scenarios', results: spec });
-  for (const [name, rs] of packs) groups.push({ key: `pack:${name}`, title: name, subtitle: 'shared test pack', results: rs });
-  if (gen.length) groups.push({ key: 'generated', title: 'Generated', subtitle: 'LLM-proposed, human-accepted', results: gen });
-  return groups;
-}
-
-const hasCritical = (r: ScenarioResultSummary) => r.assertions.some((a) => a.critical) || r.status === 'running';
-
-function Stat({ label, value, mono = true }: { label: string; value: string; mono?: boolean }) {
+function CountersStrip({ gate, counts }: { gate: GateResult; counts: GateCounts }) {
+  const untested = gate.coverage?.tools_untested ?? null;
   return (
-    <div className="min-w-0">
-      <div className="text-xs uppercase tracking-wide text-muted-foreground">{label}</div>
-      <div className={cn('text-xl font-semibold tabular-nums sm:text-2xl', mono && 'font-mono')}>{value}</div>
+    <div className="flex flex-col gap-2 border-y py-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-3">
+        <p className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-base text-muted-foreground">
+          <span className="text-3xl font-bold tabular-nums text-foreground">{counts.total}</span> tests
+          <span aria-hidden>·</span>
+          <span className="text-3xl font-bold tabular-nums text-foreground">{counts.packs}</span> {counts.packs === 1 ? 'pack' : 'packs'}
+          {untested !== null && (
+            <>
+              <span aria-hidden>·</span>
+              <span
+                className={cn('inline-flex items-baseline gap-2', untested.length > 0 && 'text-warn')}
+                title={untested.length ? `No test covers: ${untested.join(', ')}` : undefined}
+              >
+                <span className={cn('text-3xl font-bold tabular-nums', untested.length ? 'text-warn' : 'text-foreground')}>{untested.length}</span>
+                untested {untested.length === 1 ? 'tool' : 'tools'}
+                {untested.length > 0 && <TriangleAlert className="size-4 self-center" aria-hidden />}
+              </span>
+            </>
+          )}
+        </p>
+        <p className="flex flex-wrap items-center gap-4 font-mono text-base tabular-nums">
+          <span className="inline-flex items-center gap-1 text-pass" title="passed"><CircleCheck className="size-4" aria-hidden />{counts.passed}<span className="sr-only"> passed</span></span>
+          <span className="inline-flex items-center gap-1 text-fail" title="failed"><OctagonX className="size-4" aria-hidden />{counts.failed}<span className="sr-only"> failed</span></span>
+          {counts.errored > 0 && (
+            <span className="inline-flex items-center gap-1 text-warn" title="infrastructure errors (not failures)"><TriangleAlert className="size-4" aria-hidden />{counts.errored}<span className="sr-only"> errors</span></span>
+          )}
+          <span className="inline-flex items-center gap-1 text-running" title="running"><CircleDashed className="size-4" aria-hidden />{counts.running}<span className="sr-only"> running</span></span>
+        </p>
+      </div>
+      {untested && untested.length > 0 && <p className="text-sm text-warn">No test covers {untested.join(', ')}.</p>}
+      {counts.packs === 0 && counts.total > 0 && <p className="text-sm text-muted-foreground">Add test_packs to the spec to run the shared packs too.</p>}
+      {counts.disagreements > 0 && (
+        <p className="text-sm font-medium text-fail">
+          {counts.disagreements} {counts.disagreements === 1 ? 'test' : 'tests'} passed the reply check but failed on the data.
+        </p>
+      )}
+      {counts.errored > 0 && (
+        <p className="text-sm text-muted-foreground">
+          {counts.errored} {counts.errored === 1 ? 'run' : 'runs'} hit an infrastructure error (model rate limit or timeout). Those are not test failures.
+        </p>
+      )}
     </div>
   );
 }
 
-function Banner({ gate, onRollback }: { gate: GateResult; onRollback: () => void }) {
-  const failedCritical = gate.results.filter((r) => r.status !== 'passed' && r.assertions.some((a) => !a.passed && a.critical));
-  if (gate.status === 'running') {
-    const done = gate.results.filter((r) => r.status !== 'running').length;
-    const pct = gate.results.length ? (done / gate.results.length) * 100 : 0;
-    return (
-      <div className="sy-pill-amber rounded-2xl border p-4 sm:p-5" role="status">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <p className="text-lg font-semibold sm:text-2xl">
-            Testing v{gate.version} on {gate.results.length} throwaway twin databases…
-          </p>
-          <p className="font-mono text-lg font-semibold tabular-nums sm:text-2xl">
-            {done}/{gate.results.length}
-          </p>
-        </div>
-        <div className="mt-3 h-2 overflow-hidden rounded-full bg-background/60">
-          <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, background: 'var(--sy-amber)' }} />
-        </div>
-        <p className="mt-2 text-sm opacity-80">
-          {gate.current_version ? `v${gate.current_version} keeps serving members until every critical check passes.` : 'Nothing is serving yet.'}
-        </p>
-      </div>
-    );
-  }
-  if (gate.status === 'live') {
-    return (
-      <div className="sy-banner-in sy-pill-green flex flex-wrap items-center gap-3 rounded-2xl border-2 p-4 sm:p-6" role="status">
-        <Check className="size-8 shrink-0 sm:size-10" aria-hidden />
-        <div>
-          <p className="text-2xl font-bold tracking-tight sm:text-4xl">Live. v{gate.version} is now serving.</p>
-          <p className="mt-1 text-sm opacity-80">Every critical end-state check passed on {gate.results.length} twins.</p>
-        </div>
-      </div>
-    );
-  }
+function Header({ gate, counts, now, onReplay }: { gate: GateResult; counts: GateCounts; now: number; onReplay: () => void }) {
+  const running = gate.status === 'running';
+  const elapsed = (gate.finished_at ? Date.parse(gate.finished_at) : now) - Date.parse(gate.started_at);
   return (
-    <div className="sy-banner-in sy-pill-red flex flex-col gap-4 rounded-2xl border-2 p-4 sm:flex-row sm:items-center sm:p-6" role="alert">
-      <OctagonX className="size-10 shrink-0 sm:size-12" aria-hidden />
-      <div className="min-w-0 flex-1">
-        <p className="text-3xl font-bold tracking-tight sm:text-5xl">
-          Blocked. {gate.current_version ? `v${gate.current_version} is still serving.` : 'Nothing was deployed.'}
-        </p>
-        <p className="mt-1.5 text-sm sm:text-base opacity-90">
-          {failedCritical.length} critical end-state {failedCritical.length === 1 ? 'check' : 'checks'} failed
-          {failedCritical.length > 0 && <>: <span className="font-mono">{failedCritical.map((r) => shortName(r)).join(', ')}</span></>}
-        </p>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        <Button variant="outline" nativeButton={false} render={<Link href={`/agents/${gate.agent}`} />}>
-          <ArrowLeft /> Back to editor
-        </Button>
-        <Button variant="outline" onClick={onRollback}>
-          <RotateCcw /> Rollback
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-/** The demo moment, blown up: reply check PASS next to end state FAIL, with the twin diff. */
-function CatchSpotlight({ r }: { r: ScenarioResultSummary }) {
-  const failed = r.assertions.filter((a) => !a.passed);
-  return (
-    <section className="sy-banner-in grid gap-4 rounded-2xl border bg-card p-4 sm:p-6 lg:grid-cols-[1.1fr_1fr]" aria-label="What the gate caught">
-      <div className="flex min-w-0 flex-col gap-3">
-        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          <ShieldAlert className="size-4" aria-hidden /> Caught by the end-state check
+    <header className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+      <div className="flex flex-col gap-1">
+        <nav aria-label="Breadcrumb" className="text-sm text-muted-foreground">
+          <Link href="/agents" className="hover:text-foreground">Agents</Link> /{' '}
+          <Link href={`/agents/${gate.agent}`} className="hover:text-foreground">{gate.agent}</Link>
+        </nav>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <h1 className="text-2xl font-bold text-balance">{gate.agent}</h1>
+          <span className="rounded-sm bg-muted px-1.5 font-mono text-base">v{gate.version}</span>
+          <StatusPill status={gate.status} size="lg" />
+          {USE_MOCKS && !running && (
+            <Button variant="ghost" size="sm" onClick={onReplay}>
+              <PlayCircle aria-hidden /> Replay gate
+            </Button>
+          )}
         </div>
-        <h2 className="font-mono text-xl font-semibold sm:text-2xl">{shortName(r)}</h2>
-        {r.final_reply && (
-          <blockquote className="rounded-xl border-l-4 bg-muted/50 p-3 text-sm italic leading-relaxed sm:text-base" style={{ borderLeftColor: 'var(--sy-green-border)' }}>
-            “{r.final_reply}”
-          </blockquote>
-        )}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="rounded-xl border p-3">
-            <div className="text-xs text-muted-foreground">Reply check (LLM judge)</div>
-            <div className="mt-1 flex items-center gap-1.5 font-mono text-2xl font-semibold text-muted-foreground sm:text-3xl">
-              PASS <Check className="size-6" aria-hidden />
-            </div>
-            {r.reply_check && <div className="mt-1 text-xs text-muted-foreground">“{r.reply_check.rationale}”</div>}
-          </div>
-          <div className="sy-pill-red rounded-xl border-2 p-3">
-            <div className="text-xs opacity-80">End state (twin database)</div>
-            <div className="mt-1 flex items-center gap-1.5 font-mono text-2xl font-bold sm:text-3xl">
-              FAIL <X className="size-6" aria-hidden />
-            </div>
-            {failed[0] && <div className="mt-1 text-xs font-semibold">{failed[0].assertion.label}</div>}
-          </div>
+      </div>
+      <dl className="flex flex-wrap gap-x-6 gap-y-1 font-mono text-sm tabular-nums">
+        <div className="flex gap-1.5"><dt className="font-sans text-muted-foreground">{running ? 'Elapsed' : 'Took'}</dt><dd>{fmtDuration(elapsed)}</dd></div>
+        <div className="flex gap-1.5"><dt className="font-sans text-muted-foreground">Cost</dt><dd>{fmtCost(gate.total_cost_usd)}</dd></div>
+        <div className="flex gap-1.5">
+          <dt className="font-sans text-muted-foreground">{running ? 'Running' : 'Pass rate'}</dt>
+          <dd>{running ? `${counts.done} / ${counts.total}` : gate.pass_rate === null ? `${counts.passed}/${counts.total}` : fmtPct(gate.pass_rate)}</dd>
         </div>
-        <p className="sy-pill-red rounded-xl border px-3 py-2 text-base font-bold sm:text-lg">A reply-only eval would have shipped this.</p>
-      </div>
-      <div className="flex min-w-0 flex-col gap-3">
-        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">What actually changed in the data</div>
-        {failed.map((a, i) => (
-          <div key={i} className="rounded-xl bg-muted/60 p-3 font-mono text-sm">
-            <div><span className="text-muted-foreground">expected </span>{a.expected}</div>
-            <div><span className="text-muted-foreground">actual&nbsp;&nbsp;&nbsp;</span><span className="sy-text-red font-bold">{a.actual}</span></div>
-          </div>
-        ))}
-        <MiniDiff diff={r.diff} max={6} className="text-sm" />
-        {r.run_id && (
-          <Button variant="outline" className="self-start" nativeButton={false} render={<Link href={`/runs/${r.run_id}`} />}>
-            Open run trace + twin diff <ArrowUpRight />
-          </Button>
-        )}
-      </div>
-    </section>
-  );
-}
-
-function CoverageChip({ gate }: { gate: GateResult }) {
-  const cov = gate.coverage;
-  if (!cov) return null;
-  const untested = cov.tools_untested;
-  return (
-    <div className="flex flex-wrap items-center gap-2 text-xs">
-      <span
-        className={cn('rounded-full border px-2.5 py-1 font-semibold', untested.length ? 'sy-pill-amber' : 'sy-pill-green')}
-        title={untested.length ? `Untested: ${untested.join(', ')}` : `Tested: ${cov.tools_tested.join(', ')}`}
-      >
-        {untested.length ? `${untested.length} untested: ${untested.join(', ')}` : `All ${cov.tools_tested.length} tools tested`}
-      </span>
-      <span className="rounded-full border px-2.5 py-1 text-muted-foreground" title={cov.policies_tested.join('\n')}>
-        {cov.policies_tested.length} policies exercised
-      </span>
-      <span className="rounded-full border px-2.5 py-1 text-muted-foreground">
-        tables checked: <span className="font-mono">{cov.tables_checked.join(', ')}</span>
-      </span>
-    </div>
+      </dl>
+    </header>
   );
 }
 
 export function GateBoard({ name, version }: { name: string; version: number }) {
   const [nonce, setNonce] = useState(0);
   const [filter, setFilter] = useState<Filter>('all');
-  const { data: gate, error } = useData(`${name}@${version}#${nonce}`, () => getGate(name, version), {
+  const valid = Number.isInteger(version) && version > 0;
+  const { data: gate, error, refetch } = useData(`${name}@${version}#${nonce}`, () => getGate(name, version), {
     pollMs: 1000,
-    shouldPoll: (g) => !g || g.status === 'running',
+    shouldPoll: (g) => valid && (!g || g.status === 'running'),
   });
   const running = gate?.status === 'running';
   const now = useNow(1000, running);
 
-  const results = useMemo(() => gate?.results ?? [], [gate]);
+  const all = useMemo(() => (gate ? boardResults(gate) : []), [gate]);
+  const counts = useMemo(() => countResults(all), [all]);
+  const codes = useMemo(() => tagCodes(groupResults(all)), [all]);
   const groups = useMemo(() => {
-    const visible = results.filter((r) =>
-      filter === 'failed' ? r.status === 'failed' || r.status === 'error' : filter === 'critical' ? hasCritical(r) : true,
+    const visible = all.filter((r) =>
+      filter === 'failed'
+        ? r.status === 'failed' || r.status === 'error'
+        : filter === 'critical'
+          ? r.status === 'failed' && r.assertions.some((a) => !a.passed && a.critical)
+          : true,
     );
     return groupResults(visible);
-  }, [results, filter]);
-  const catches = results.filter((r) => verdicts(r).disagree);
-  const packCount = new Set(results.filter((r) => r.source === 'pack').map((r) => r.pack)).size;
-  const passed = results.filter((r) => r.status === 'passed').length;
-  const failedCount = results.filter((r) => r.status === 'failed' || r.status === 'error').length;
+  }, [all, filter]);
+  const lastProgress = useLastProgress(gate ? counts.done : undefined);
+  const catches = all.filter((r) => verdicts(r).disagree);
 
-  if (error) {
-    return (
-      <div className="sy-pill-red rounded-xl border p-6">
-        <p className="font-semibold">Could not load the gate for {name} v{version}.</p>
-        <p className="text-sm">{error.message}</p>
-      </div>
-    );
-  }
+  if (!valid) return <ErrorState title="That isn't a version number." error={new Error(`"${String(version)}" is not a valid version.`)} />;
+  if (error && !gate) return <ErrorState title={`Could not load the gate for ${name} v${version}.`} error={error} onRetry={refetch} />;
   if (!gate) return <GateBoardSkeleton />;
 
-  const elapsed = (gate.finished_at ? Date.parse(gate.finished_at) : now) - Date.parse(gate.started_at);
-
-  const doRollback = async () => {
-    try {
-      const r = await rollback(name);
-      toast.success(`Rolled back. v${r.current_version} is serving.`);
-    } catch (e) {
-      toast.error('Rollback failed', { description: e instanceof Error ? e.message : String(e) });
-    }
-  };
+  const stalled = running && now - lastProgress > STALL_MS;
   const doReplay = async () => {
     await replayGate(name, version);
     setNonce((n) => n + 1);
   };
+  const filters: [Filter, string][] = [
+    ['all', `All ${counts.total}`],
+    ['failed', `Failed ${counts.failed + counts.errored}`],
+    ['critical', `Critical ${counts.criticalFailed}`],
+  ];
 
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-6">
-      <header className="flex flex-col gap-4">
-        <Link href={`/agents/${name}`} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="size-4" aria-hidden /> {name}
-        </Link>
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
-            {name} <span className="text-muted-foreground">v{gate.version}</span>
-          </h1>
-          <StatusPill status={gate.status} size="lg" />
-          {USE_MOCKS && !running && (
-            <Button variant="ghost" size="sm" className="ml-auto" onClick={doReplay}>
-              <PlayCircle /> Replay gate
-            </Button>
-          )}
-        </div>
-        <div className="grid grid-cols-2 gap-4 rounded-2xl border bg-card p-4 sm:grid-cols-4">
-          <Stat label="Pass rate" value={gate.pass_rate === null ? `${passed}/${results.length}` : `${fmtPct(gate.pass_rate)}`} />
-          <Stat label="Passed / failed" value={`${passed} / ${failedCount}`} />
-          <Stat label="Total cost" value={fmtCost(gate.total_cost_usd, 3)} />
-          <Stat label={running ? 'Elapsed' : 'Took'} value={fmtDuration(elapsed)} />
-        </div>
-      </header>
+    <div className="mx-auto flex max-w-[1440px] flex-col gap-6">
+      <VerdictBanner gate={gate} counts={counts} results={all} />
+      <Header gate={gate} counts={counts} now={now} onReplay={doReplay} />
+      <StaleNotice error={error} onRetry={refetch} />
+      {running && <RunningPanel gate={gate} counts={counts} stalled={stalled} />}
+      <CountersStrip gate={gate} counts={counts} />
+      {catches[0] && <CatchSpotlight r={catches[0]} more={catches.length - 1} />}
 
-      <Banner gate={gate} onRollback={doRollback} />
-
-      {catches.map((r) => (
-        <CatchSpotlight key={r.scenario} r={r} />
-      ))}
-
-      <section className="flex flex-col gap-4" aria-label="All tests">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-col gap-2">
-            <p className="text-lg font-semibold tabular-nums">
-              {results.length} tests · {packCount} packs · {gate.coverage ? gate.coverage.tools_untested.length : '…'} untested tools
-            </p>
-            <CoverageChip gate={gate} />
-          </div>
-          <div className="inline-flex self-start rounded-lg border p-0.5 text-sm" role="tablist" aria-label="Filter tests">
-            {(
-              [
-                ['all', `All ${results.length}`],
-                ['failed', `Failed ${failedCount}`],
-                ['critical', 'Critical only'],
-              ] as const
-            ).map(([key, label]) => (
+      <section className="flex flex-col gap-6" aria-label="All tests">
+        <div className="sticky top-0 z-10 -mx-1 flex items-center bg-background/95 px-1 py-2 backdrop-blur-[2px] max-lg:top-[88px]">
+          <div className="inline-flex rounded-md border bg-card p-0.5 text-sm" role="tablist" aria-label="Filter tests">
+            {filters.map(([key, label]) => (
               <button
                 key={key}
+                type="button"
                 role="tab"
                 aria-selected={filter === key}
                 onClick={() => setFilter(key)}
                 className={cn(
-                  'rounded-md px-3 py-1.5 font-medium transition-colors',
-                  filter === key ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground',
+                  'rounded-sm px-3 py-1.5 font-medium tabular-nums transition-colors',
+                  filter === key ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
                 )}
               >
                 {label}
@@ -293,29 +187,46 @@ export function GateBoard({ name, version }: { name: string; version: number }) 
         </div>
 
         {groups.length === 0 && (
-          <p className="rounded-xl border border-dashed p-8 text-center text-muted-foreground">
-            {filter === 'failed' ? 'No failures. Every end-state check passed.' : 'No tests match this filter.'}
+          <p className="rounded-md border border-dashed p-8 text-center text-muted-foreground">
+            {counts.total === 0
+              ? 'No tests yet. Spinning up twins…'
+              : filter === 'all'
+                ? 'No tests in this gate.'
+                : running
+                  ? 'Nothing here yet. Tests are still running.'
+                  : filter === 'failed'
+                    ? 'No failures. Every end-state check passed.'
+                    : 'No critical failures.'}
           </p>
         )}
         {groups.map((g) => {
-          const gFailed = g.results.filter((r) => r.status === 'failed' || r.status === 'error').length;
-          const gDone = g.results.filter((r) => r.status !== 'running').length;
+          const gc = countResults(g.results);
           return (
-            <div key={g.key} className="flex flex-col gap-2">
-              <div className="flex items-baseline gap-2">
-                <h2 className="flex items-center gap-1.5 text-base font-semibold">
-                  {g.key === 'generated' && <Sparkles className="size-4 text-[var(--sy-accent)]" aria-hidden />}
+            <div key={g.key} className="flex flex-col gap-3">
+              <div className="flex flex-wrap items-baseline gap-x-2">
+                <h2 className="flex items-center gap-1.5 text-lg font-semibold">
+                  {g.key === 'generated' && <Sparkles className="size-4 text-muted-foreground" aria-hidden />}
                   {g.title}
                 </h2>
-                <span className="text-xs text-muted-foreground">{g.subtitle}</span>
-                <span className="ml-auto font-mono text-xs tabular-nums text-muted-foreground">
-                  {gDone}/{g.results.length}
-                  {gFailed > 0 && <span className="sy-text-red font-semibold"> · {gFailed} failed</span>}
+                <span className="text-sm text-muted-foreground">{g.subtitle}</span>
+                <span className="ml-auto inline-flex items-center gap-1.5 font-mono text-sm tabular-nums text-muted-foreground">
+                  {gc.total}
+                  {gc.running > 0 && <span>· {gc.running} running</span>}
+                  {gc.failed > 0 && (
+                    <span className="inline-flex items-center gap-1 font-semibold text-fail">
+                      · <OctagonX className="size-3.5" aria-hidden /> {gc.failed} failed
+                    </span>
+                  )}
+                  {gc.errored > 0 && (
+                    <span className="inline-flex items-center gap-1 text-warn">
+                      · <TriangleAlert className="size-3.5" aria-hidden /> {gc.errored} errored
+                    </span>
+                  )}
                 </span>
               </div>
-              <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(min(300px,100%),1fr))] items-start gap-3">
                 {g.results.map((r) => (
-                  <GateCard key={r.scenario} r={r} />
+                  <GateCard key={r.scenario} r={r} code={codes.get(r.scenario) ?? g.code} />
                 ))}
               </div>
             </div>
@@ -328,13 +239,13 @@ export function GateBoard({ name, version }: { name: string; version: number }) 
 
 export function GateBoardSkeleton() {
   return (
-    <div className="mx-auto flex max-w-7xl animate-pulse flex-col gap-6">
-      <div className="h-10 w-72 rounded-lg bg-muted" />
-      <div className="h-24 rounded-2xl bg-muted" />
-      <div className="h-28 rounded-2xl bg-muted" />
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="mx-auto flex max-w-[1440px] flex-col gap-6" aria-busy="true" aria-label="Loading gate">
+      <Skeleton className="h-10 w-72" />
+      <Skeleton className="h-24 rounded-lg" />
+      <Skeleton className="h-16" />
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(min(300px,100%),1fr))] gap-3">
         {Array.from({ length: 8 }, (_, i) => (
-          <div key={i} className="h-32 rounded-xl bg-muted" />
+          <Skeleton key={i} className="h-28" />
         ))}
       </div>
     </div>
