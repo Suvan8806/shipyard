@@ -12,6 +12,10 @@
 - `lane-b`: gate fan-out per scenario (no 300s cap), 429 backoff + model fallback chain, stale sweeper, finalize idempotency.
 - `lane-d`: dashboard real-API default (`NEXT_PUBLIC_USE_MOCKS=1` for mocks), every screen vs real shapes, loading/empty/error states, `NEXT_PUBLIC_API_ORIGIN`.
 
+**UPDATE (resumed session): merged lane-b gate fan-out + lane-d real-API dashboard → prod `316d636`. Models switched to PAID Gemini ($10 prepaid, auto-reload off): careful = google/gemini-3.5-flash, fast = google/gemini-3.5-flash-lite, fallback = flash-lite → groq 120b → groq 20b, concurrency 6, SHIPYARD_BUDGET_USD=8 (cap code in flight on lane-b). Groq paid tier unavailable ("temporarily unavailable due to high demand").**
+**PROVEN ON PROD (E3 done):** support-agent v2 BLOCKED by a real bug the money-safety pack found (credit on $0 balance → −$25; reply check PASS, end state FAIL) → one-line fix "Never apply a credit when the balance is $0 or less." → **v3 LIVE 46/46 in 90 s** → demo bad edit → **v4 BLOCKED, v3 still serving**: 4 failures (second-credit-this-month, prior-credit-within-30-days, tool-name-injection all with reply PASS; fake-manager-approval). About **$0.28 per 46-test deploy** (~28 deploys left in the $8 cap). Draft restored to the good v3 spec.
+**In flight:** lane-b (dead-provider skip, tool-format retry, budget cap + 402, coverage for fan-out) · design (Impeccable critique → fix → animate → polish on the real screens).
+
 **Next, in order:**
 1. User upgrades Groq (paid, ~$10). Re-run the burst test (tests 30 parallel calls) to confirm higher limits.
 2. Finish + verify lane-b (deploy collections-agent on a preview) → merge → push.
