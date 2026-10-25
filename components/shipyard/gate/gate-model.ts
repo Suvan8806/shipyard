@@ -77,6 +77,16 @@ export interface GateCounts {
 export const isCriticalFail = (r: ScenarioResultSummary) =>
   r.status === 'failed' && r.assertions.some((a) => !a.passed && a.critical);
 
+/**
+ * The most telling failure: a reply-vs-data disagreement (the agent's own spec scenarios before packs), else the
+ * first critical failure, else any failure.
+ */
+export function pickSpotlight(results: ScenarioResultSummary[]): ScenarioResultSummary | undefined {
+  const failures = results.filter((r) => r.status === 'failed');
+  const disagreements = failures.filter((r) => verdicts(r).disagree);
+  return disagreements.find((r) => r.source === 'spec') ?? disagreements[0] ?? failures.find(isCriticalFail) ?? failures[0];
+}
+
 export function countResults(results: ScenarioResultSummary[]): GateCounts {
   const by = (s: ScenarioResultSummary['status']) => results.filter((r) => r.status === s).length;
   const running = by('running');

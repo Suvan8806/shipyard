@@ -6,7 +6,7 @@ import { parse as parseYaml } from 'yaml';
 import type { AgentDetail, LibraryResponse } from '@/lib/contracts/api';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { getAgent, getLibrary } from '../api';
-import { EmptyState, ErrorState, Skeleton, StaleNotice } from '../states';
+import { EmptyState, ErrorState, isNotFound, NotFoundState, Skeleton, StaleNotice } from '../states';
 import { useData } from '../use-data';
 import { ActivityFeed } from '../activity/activity';
 import { AgentHeader } from './agent-header';
@@ -21,21 +21,47 @@ interface SpecParts {
   profile: string | null;
   inherit: string[];
   packs: string[];
+  tools: string[];
 }
+
+/** Pack name -> its templates' names and requires_tools (from the server page; same YAML the gate expands). */
+export type PackTemplates = Record<string, { name: string; requires_tools: string[] }[]>;
 
 function specParts(yaml: string): SpecParts {
   try {
-    const s = parseYaml(yaml) as { profile?: unknown; inherit?: unknown; test_packs?: unknown } | null;
+    const s = parseYaml(yaml) as { profile?: unknown; inherit?: unknown; test_packs?: unknown; tools?: unknown } | null;
     const list = (v: unknown) => (Array.isArray(v) ? v.map(String) : []);
-    return { profile: typeof s?.profile === 'string' ? s.profile : null, inherit: list(s?.inherit), packs: list(s?.test_packs) };
+    return {
+      profile: typeof s?.profile === 'string' ? s.profile : null,
+      inherit: list(s?.inherit),
+      packs: list(s?.test_packs),
+      tools: list(s?.tools),
+    };
   } catch {
-    return { profile: null, inherit: [], packs: [] };
+    return { profile: null, inherit: [], packs: [], tools: [] };
   }
 }
 
-/** "12 tests" when the library is loaded, else "3 scenarios plus 5 test packs". */
-function testCountLabel(scenarios: number, packs: string[], lib: LibraryResponse | null): string {
+/**
+ * Tests the gate will run: own scenarios plus pack templates whose requires_tools are all in the spec's tools,
+ * deduped by name (lib/gate/packs.ts#expandPacks + lib/gate/gate.ts#mergeScenarios). Paraphrase variants excluded.
+ */
+function gateTestCount(ownNames: string[], parts: SpecParts, packTemplates: PackTemplates): number {
+  const names = new Set(ownNames);
+  for (const pack of parts.packs) {
+    for (const t of packTemplates[pack] ?? []) {
+      if (t.requires_tools.every((tool) => parts.tools.includes(tool))) names.add(`${pack}/${t.name}`);
+    }
+  }
+  return names.size;
+}
+
+/** "46 tests" from the gate's own pack expansion; else the library's raw counts; else "3 scenarios plus 5 test packs". */
+function testCountLabel(ownNames: string[], parts: SpecParts, lib: LibraryResponse | null, packTemplates?: PackTemplates): string {
   const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
+  const scenarios = ownNames.length;
+  const packs = parts.packs;
+  if (packTemplates) return plural(gateTestCount(ownNames, parts, packTemplates), 'test');
   if (lib) {
     const fromPacks = packs.reduce((n, p) => n + (lib.packs.find((x) => x.name === p)?.templates ?? 0), 0);
     return plural(scenarios + fromPacks, 'test');
@@ -111,7 +137,7 @@ function ScenariosTab({ d, packs, testCount }: { d: AgentDetail; packs: string[]
   );
 }
 
-export function AgentPage({ name }: { name: string }) {
+export function AgentPage({ name, packTemplates }: { name: string; packTemplates?: PackTemplates }) {
   const { data: d, error, loading, refetch } = useData(`agent:${name}`, () => getAgent(name), {
     pollMs: POLL_MS,
     shouldPoll: (x) => !!x?.versions.some((v) => v.status === 'running'),
@@ -123,6 +149,13 @@ export function AgentPage({ name }: { name: string }) {
   const parts = useMemo(() => specParts(yaml), [yaml]);
 
   if (loading && !d) return <PageSkeleton />;
+  if (!d && isNotFound(error)) {
+    return (
+      <NotFoundState title="Agent not found">
+        There is no agent named <span className="font-mono text-foreground">{name}</span>. It may have been removed by a reset.
+      </NotFoundState>
+    );
+  }
   if (error && !d) {
     return (
       <div className="mx-auto flex max-w-7xl flex-col gap-4">
@@ -135,8 +168,8 @@ export function AgentPage({ name }: { name: string }) {
   }
   if (!d) return null;
 
-  const scenarioCount = Object.keys(d.draft_scenarios ?? {}).length;
-  const testCount = testCountLabel(scenarioCount, parts.packs, lib);
+  const ownNames = Object.entries(d.draft_scenarios ?? {}).map(([f, y]) => parseScenario(f, y).name);
+  const testCount = testCountLabel(ownNames, parts, lib, packTemplates);
   const validation = spec ? spec.validation : d.validation;
   const save = spec?.save ?? 'idle';
 

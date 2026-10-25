@@ -10,10 +10,15 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { deploy, errorMessage, rollback } from '../api';
 import { MiniDiff } from './mini-diff';
-import { isCriticalFail, shortName, verdicts, type GateCounts } from './gate-model';
+import { isCriticalFail, pickSpotlight, shortName, verdicts, type GateCounts } from './gate-model';
 
-function servingSentence(current: number | null): string {
-  return current ? `v${current} is still serving.` : 'Nothing was deployed.';
+/**
+ * What is serving, worded for this version's gate. `current_version` is the version serving NOW, so on an older
+ * gate (current newer than this version) it did not exist at gate time: say "Currently serving" instead.
+ */
+function servingSentence(current: number | null, version: number): string {
+  if (!current) return 'Nothing is serving.';
+  return current < version ? `v${current} is still serving.` : `Currently serving: v${current}.`;
 }
 
 function BlockedBanner({
@@ -54,7 +59,7 @@ function BlockedBanner({
       <div className="min-w-0 flex-1">
         <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <span className="status-word text-3xl sm:text-4xl">Blocked.</span>
-          <span className="text-2xl font-medium">{servingSentence(gate.current_version)}</span>
+          <span className="text-2xl font-medium">{servingSentence(gate.current_version, gate.version)}</span>
         </p>
         <p className="mt-1.5 text-sm opacity-90 sm:text-base">{sub.join(' · ')}</p>
       </div>
@@ -78,7 +83,7 @@ function BlockedBanner({
           </Button>
         )}
         {failing?.run_id && (
-          <Button className="bg-blocked-solid-foreground text-blocked hover:bg-blocked-solid-foreground/90" nativeButton={false} render={<Link href={`/runs/${failing.run_id}`} />}>
+          <Button className="bg-blocked-solid-foreground text-blocked-solid hover:bg-blocked-solid-foreground/90" nativeButton={false} render={<Link href={`/runs/${failing.run_id}`} />}>
             View failing run <ArrowUpRight aria-hidden />
           </Button>
         )}
@@ -230,7 +235,7 @@ export function VerdictBanner({ gate, counts, results }: { gate: GateResult; cou
   if (gate.status === 'running') return null;
   if (gate.status === 'live') return <LiveBanner gate={gate} counts={counts} landed={landed} />;
   if (gate.status === 'error') return <ErrorBanner gate={gate} landed={landed} />;
-  const failing = results.find(isCriticalFail) ?? results.find((r) => r.status === 'failed');
+  const failing = pickSpotlight(results);
   return <BlockedBanner gate={gate} counts={counts} failing={failing} landed={landed} />;
 }
 
