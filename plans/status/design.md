@@ -14,3 +14,12 @@ Direction: "Departures", a split-flap departures board (contract in .impeccable/
 
 ## Next
 - DESIGN.md rewrite for Departures; finish review.
+
+## STOPPED AT (paused for laptop close)
+- Done + pushed: everything above, plus landing page at / (app/page.tsx, components/shipyard/landing/copy-command.tsx) and components/shipyard/onboarding.tsx (HowItWorksGuide + Caption), not yet wired in.
+- Next, in order:
+  1. Verify landing page renders (/, 1440 + 375), screenshot.
+  2. Wire HowItWorksGuide above the table in components/shipyard/agents/agents-list.tsx (main return ~line 285).
+  3. Captions: gate board header ("Each row is one test run on a throwaway copy of the database"), agent header ("Edit the spec, then Deploy: the gate decides if it ships"), run trace h1 ~line 242 ("Every model call, tool call and the exact rows the agent changed").
+  4. "?" help link in shell nav to /.
+  5. npm run build, push, DESIGN.md rewrite, finish review.
