@@ -1,12 +1,12 @@
 // The agent loop (PRD 11.2). One run per conversation; one generateText per pending user turn.
 // Every model step, tool call, policy block, approval and error is logged as a run event.
 // runAgent never throws: failures end the run with outcome 'error'.
-import { APICallError, RetryError, generateText, stepCountIs, tool, type ModelMessage, type ToolSet } from 'ai';
+import { generateText, stepCountIs, tool, type LanguageModel, type ModelMessage, type ToolSet } from 'ai';
 import type { z } from 'zod';
 import type { RunAgentFn, RunInput, RunResult, EventType } from '../types';
 import { PROFILES } from '../library/profiles';
 import { getTool, toWireName } from '../library';
-import { resolveModel } from './model';
+import { createResilientModel, resilientFor, type ChainModel, type ResilientState } from './model';
 import { costOf } from './cost';
 import { buildSystemPrompt } from './prompt';
 import { checkPolicy, newRunState } from './policy';
@@ -32,22 +32,16 @@ export interface RunnerRepo {
 }
 
 const MAX_STEPS = 8;
-const MAX_TURN_RETRIES = 2;
-const MAX_WAIT_MS = 30_000;
+/** Wall-clock budget for one run; rate-limit backoff stops waiting past it (serverless cap is 300s). */
+const RUN_BUDGET_MS = 240_000;
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e)).slice(0, 500);
 
-/** If `e` is a rate limit (429), the ms to wait (retry-after honored); otherwise null. */
-export function rateLimitDelay(e: unknown, attempt: number): number | null {
-  const inner = RetryError.isInstance(e) ? e.lastError : e;
-  if (!APICallError.isInstance(inner) || inner.statusCode !== 429) return null;
-  const h = inner.responseHeaders ?? {};
-  const ms = Number(h['retry-after-ms']);
-  if (Number.isFinite(ms) && ms > 0) return Math.min(ms, MAX_WAIT_MS);
-  const s = Number(h['retry-after']);
-  if (Number.isFinite(s) && s > 0) return Math.min(s * 1000, MAX_WAIT_MS);
-  return Math.min(2000 * 2 ** attempt, MAX_WAIT_MS);
+export interface RunnerOptions {
+  /** Explicit model chain (tests inject mocks here to exercise the 429 -> fallback path). */
+  chain?: ChainModel[];
+  /** Overrides the backoff sleep (tests). */
+  sleep?: (ms: number) => Promise<void>;
 }
 
 /** Splits chat history into turns: each user message not yet followed by an assistant reply needs generation. */
@@ -58,11 +52,10 @@ function plan(messages: RunInput['messages']): { content: string; role: 'user' |
   }));
 }
 
-export function createRunner(repo: RunnerRepo): RunAgentFn {
+export function createRunner(repo: RunnerRepo, opts: RunnerOptions = {}): RunAgentFn {
   return async (input: RunInput): Promise<RunResult> => {
     const { spec, db } = input;
     const profile = PROFILES[spec.profile] ?? PROFILES.careful;
-    const modelId = input.modelOverride ? 'mock' : profile.model;
     const totals = { cost: 0, tin: 0, tout: 0, events: 0 };
     let outcome: 'ok' | 'error' = 'ok';
     let finalReply = '';
@@ -96,7 +89,6 @@ export function createRunner(repo: RunnerRepo): RunAgentFn {
     };
 
     const runState = newRunState();
-    let toolsRanThisTurn = 0;
 
     const tools: ToolSet = {};
     for (const name of spec.tools) {
@@ -106,7 +98,6 @@ export function createRunner(repo: RunnerRepo): RunAgentFn {
         description: def.description,
         inputSchema: def.params as unknown as z.ZodType<Record<string, unknown>>,
         execute: async (args: Record<string, unknown>) => {
-          toolsRanThisTurn++;
           try {
             const decision = await checkPolicy({ tool: name, args, spec, runState, db, runId });
             if (decision.kind === 'block') {
@@ -134,7 +125,27 @@ export function createRunner(repo: RunnerRepo): RunAgentFn {
     }
 
     const instructions = buildSystemPrompt(spec);
-    const model = input.modelOverride ?? resolveModel(profile.model);
+    const resilience = {
+      deadline: Date.now() + RUN_BUDGET_MS,
+      sleep: opts.sleep,
+      onThrottle: (t: { model: string; waitMs: number | null; fallbackTo: string | null; error: string }) => {
+        void log({
+          type: 'error',
+          name: 'rate_limit',
+          payload: { model: t.model, retry_in_ms: t.waitMs, fallback_to: t.fallbackTo, error: t.error },
+        });
+      },
+    };
+    let model: LanguageModel;
+    let state: ResilientState;
+    if (opts.chain) {
+      ({ model, state } = createResilientModel(opts.chain, resilience));
+    } else if (input.modelOverride) {
+      model = input.modelOverride;
+      state = { current: 'mock', fallbackFrom: null, waitedMs: 0 };
+    } else {
+      ({ model, state } = resilientFor(profile.model, resilience));
+    }
     const history: ModelMessage[] = [];
 
     try {
@@ -142,59 +153,48 @@ export function createRunner(repo: RunnerRepo): RunAgentFn {
         history.push({ role: turn.role, content: turn.content });
         if (!turn.generate) continue;
 
-        for (let attempt = 0; ; attempt++) {
-          toolsRanThisTurn = 0;
-          let last = Date.now();
-          try {
-            const result = await generateText({
-              model,
-              instructions,
-              messages: history,
-              tools,
-              stopWhen: stepCountIs(MAX_STEPS),
-              temperature: profile.temperature,
-              maxOutputTokens: profile.maxOutputTokens,
-              maxRetries: 4, // per model call; the SDK honors retry-after on 429
-              onStepEnd: (step) => {
-                const now = Date.now();
-                const tin = step.usage.inputTokens ?? 0;
-                const tout = step.usage.outputTokens ?? 0;
-                const cost = costOf(modelId, step.usage);
-                totals.cost += cost;
-                totals.tin += tin;
-                totals.tout += tout;
-                void log({
-                  type: 'model_call',
-                  name: modelId,
-                  payload: {
-                    step: step.stepNumber,
-                    finish_reason: step.finishReason,
-                    tool_calls: step.toolCalls.map((c) => c.toolName),
-                    text: step.text ? step.text.slice(0, 2000) : null,
-                  },
-                  tokens_in: tin,
-                  tokens_out: tout,
-                  cost_usd: cost,
-                  latency_ms: now - last,
-                });
-                last = now;
-                flushTools();
+        let last = Date.now();
+        const result = await generateText({
+          model,
+          instructions,
+          messages: history,
+          tools,
+          stopWhen: stepCountIs(MAX_STEPS),
+          temperature: profile.temperature,
+          maxOutputTokens: profile.maxOutputTokens,
+          // Throttles (429/503) are handled per call inside the resilient model (backoff + fallback chain);
+          // this only retries other transient failures.
+          maxRetries: 2,
+          onStepEnd: (step) => {
+            const now = Date.now();
+            const tin = step.usage.inputTokens ?? 0;
+            const tout = step.usage.outputTokens ?? 0;
+            const used = state.current;
+            const cost = costOf(used, step.usage);
+            totals.cost += cost;
+            totals.tin += tin;
+            totals.tout += tout;
+            void log({
+              type: 'model_call',
+              name: used,
+              payload: {
+                step: step.stepNumber,
+                finish_reason: step.finishReason,
+                tool_calls: step.toolCalls.map((c) => c.toolName),
+                text: step.text ? step.text.slice(0, 2000) : null,
+                ...(state.fallbackFrom ? { fallback_from: state.fallbackFrom } : {}),
               },
+              tokens_in: tin,
+              tokens_out: tout,
+              cost_usd: cost,
+              latency_ms: now - last,
             });
-            history.push(...result.responseMessages);
-            finalReply = result.text;
-            break;
-          } catch (e) {
-            const wait = rateLimitDelay(e, attempt);
-            // Only retry a whole turn when no tool ran in it (tools have side effects).
-            if (wait !== null && toolsRanThisTurn === 0 && attempt < MAX_TURN_RETRIES) {
-              void log({ type: 'error', name: 'rate_limit', payload: { error: errMsg(e), retry_in_ms: wait } });
-              await sleep(wait);
-              continue;
-            }
-            throw e;
-          }
-        }
+            last = now;
+            flushTools();
+          },
+        });
+        history.push(...result.responseMessages);
+        finalReply = result.text;
       }
     } catch (e) {
       outcome = 'error';

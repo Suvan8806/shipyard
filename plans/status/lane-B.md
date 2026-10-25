@@ -39,3 +39,50 @@ REQUESTS:
 - DEP REQUEST: none
 BLOCKED: none. Not verified on Vercel: a full DB-backed gate (needs Lane A runner + Lane C deploy route); covered locally by tests/gate/gate.test.ts with mocked repo.
 READY TO MERGE: yes (lane-b). Pre-existing tsc error `app/layout.tsx: Cannot find name 'LayoutProps'` is from Next typegen, not this lane.
+
+
+## STOPPED AT (2026-10-24, gate-reliability pass) - commit 4145451 on lane-b
+Goal: a ~46-test deploy always reaches live/blocked/error; Groq 429s slow it down but don't break it.
+
+### Done (compiles; tsc clean, vitest 61/61, `npm run build` green; NOT yet tested on Vercel)
+- **Fan-out gate** (`lib/gate/queue.ts`). The deploy route inserts one row per attempt into `scenario_results`.
+  Each row is `status='running'` with `before_snapshot = {"__gate":"queued","scenario":{...}}`, so **no schema change** is needed.
+  Then it "pumps": `repo.claimQueuedScenarios` claims up to `SHIPYARD_GATE_CONCURRENCY` (default now **3**) attempts, under a
+  per-version advisory lock with an in-flight bound. It POSTs each claimed attempt to `/api/internal/gate/run-scenario`
+  (header `x-shipyard-internal` = `SHIPYARD_INTERNAL_SECRET`, or sha256 of `SUPABASE_DB_URL`; it forwards `x-vercel-protection-bypass`
+  from `VERCEL_AUTOMATION_BYPASS_SECRET` or from the incoming request). Each worker invocation (maxDuration 300) runs one attempt,
+  pumps the next one, then calls `finalizeVersion` (a conditional `UPDATE ... WHERE status='running' RETURNING`, so it's idempotent).
+  If a dispatch fails, the attempt runs inline while there is time; otherwise it goes back to the queue.
+  `SHIPYARD_GATE_MODE=inline` restores the old single-invocation `runGate`.
+- **Shared logic**: `lib/gate/attempt.ts` (runAttempt) and `lib/gate/verdict.ts` (decide, applyVerdict, finalizeVersion). `runGate` uses both, so tests are unchanged.
+- **Stale sweeper**: `GET /api/agents/:name/versions/:v` calls `reconcileGate`. It marks in-flight attempts older than 6 min and every unfinished
+  attempt of a version older than 10 min as `error`, then finalizes. Old rows with `status='running'` and a null `before_snapshot` are
+  treated as in-flight, so **support-agent v1 gets swept on its next GET**. When work is queued and slots are free, it re-pumps in `after()`.
+- **Rate limits** (`lib/runtime/model.ts` `createResilientModel`, used by the runner and by the judge/variants). On 429/503/529 it honors
+  `retry-after(-ms)` or Groq's "try again in Xs", adds jitter, and allows 30 s per model and 90 s per call.
+  It then does a sticky fallback through `SHIPYARD_FALLBACK_MODELS` (default `google/gemini-3.5-flash,groq/openai/gpt-oss-20b,google/gemini-3.5-flash-lite`).
+  `model_call` events are named after the model that actually served them and carry `payload.fallback_from`. Throttles are logged as `error` events named `rate_limit`.
+  Once the chain is exhausted, the run fails with `RateLimitExhaustedError`, and the scenario's `final_reply` reads "Gate error: Rate limited on every model ...".
+  The run budget is 240 s.
+- The judge and variants use the fast model: `SHIPYARD_FAST_MODEL`, else Gemini Flash when `GOOGLE_GENERATIVE_AI_API_KEY` is set. The judge budget is 20 s, and it is skipped for errored attempts.
+- MCP `deploy` (`startDeploy().run()` without args) still waits: the coordinator supervises (reconcile + pump every 3 s) for up to about 280 s.
+
+### Half-done / not verified
+- **No real run on a Vercel preview yet.** The open questions are below.
+  (a) Does the request origin plus the bypass header reach the internal route on a protected preview? If not, attempts fall back to running inline.
+  (b) Does `sql.begin` with `pg_advisory_xact_lock` behave on the Supabase transaction pooler? It should, because the lock is transaction-scoped.
+  (c) Does `sql(rows, ...cols)` bulk insert work with jsonb `before_snapshot`?
+
+### Next steps (in order)
+1. `git push origin lane-b`. Wait for the Vercel preview build, then get its URL and bypass secret (`npx vercel curl`, or `npx vercel deploy --yes`).
+2. On the preview: `POST /api/agents/collections-agent/deploy`, then poll `GET .../versions/:v` until it reaches a terminal status. Record the timeline and the error count.
+   Watch the function logs for `[gate] dispatch ... got HTTP 401/403`, which means protection is blocking the internal fetch. Fix it by setting `VERCEL_AUTOMATION_BYPASS_SECRET` (enable Protection Bypass for Automation) or `SHIPYARD_GATE_BASE_URL`.
+3. Run `GET /api/agents/support-agent/versions/1` once on prod after merging. v1 should flip from running to blocked.
+4. Optional: set `SHIPYARD_INTERNAL_SECRET` on Vercel. Without it, the secret is derived from `SUPABASE_DB_URL`, which works.
+
+### Known issues
+- If enqueue crashes partway, the inserted queued rows stay `running` while the version is marked `error`. This is cosmetic.
+- A dispatch that times out after the target has already accepted can run the same attempt twice. It's rare, because the route returns 202 immediately, and the second save just upserts the same row.
+- Coverage is still not persisted for fan-out runs. `getGateResult` returns `coverage: null`, same as before.
+- Env requested: none required. Optional: `SHIPYARD_INTERNAL_SECRET`, `SHIPYARD_FALLBACK_MODELS`, `SHIPYARD_GATE_MODE`, `SHIPYARD_GATE_BASE_URL`,
+  `SHIPYARD_RATE_LIMIT_BUDGET_MS`, `SHIPYARD_RATE_LIMIT_MODEL_BUDGET_MS`. Migrations: none.

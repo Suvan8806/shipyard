@@ -1,46 +1,21 @@
 // The gate (PRD 12): every scenario attempt on its own throwaway twin, end state checked with structured
 // assertions, majority vote, then live or blocked. Results stream into scenario_results as they finish.
-import type { LanguageModel } from 'ai';
 import * as repo from '../platform/repo';
-import { runAgent } from '../runtime/runner';
-import { createTwin } from '../twins/twin';
-import { diffSnapshots } from '../twins/diff';
-import type {
-  AgentSpec,
-  AssertionOutcome,
-  GateResult,
-  ReplyCheck,
-  RunEvent,
-  RunGateFn,
-  Scenario,
-  ScenarioResultSummary,
-  ScenarioStatus,
-  Snapshot,
-  SystemDb,
-  TwinDiff,
-  VersionStatus,
-} from '../types';
-import { evaluateAssertions } from './assertions';
+import type { AgentSpec, GateResult, RunEvent, RunGateFn, Scenario, ScenarioResultSummary, VersionStatus } from '../types';
+import { runAttempt, type GateOptions } from './attempt';
 import { computeCoverage } from './coverage';
 import { expandTestPacks } from './packs';
-import { judgeReply, replyJudgeEnabled } from './reply-check';
 import { replayDelayMs, replayEnabled, sleep } from './replay';
 import { expandVariants } from './variants';
+import { applyVerdict, decide } from './verdict';
 
-export interface GateOptions {
-  /** Tests inject the AI SDK mock model; passed to runAgent (and the judge / paraphraser unless they're off). */
-  modelOverride?: LanguageModel;
-}
+export { assertTwinDb, type GateOptions } from './attempt';
+export { decide } from './verdict';
 
-const DEFAULT_CONCURRENCY = 4;
+const DEFAULT_CONCURRENCY = 3;
 export function gateConcurrency(): number {
   const n = Number(process.env.SHIPYARD_GATE_CONCURRENCY);
   return Number.isFinite(n) && n >= 1 ? Math.min(Math.floor(n), 16) : DEFAULT_CONCURRENCY;
-}
-
-/** Live safety: the gate only ever runs scenarios on twins. */
-export function assertTwinDb(db: SystemDb): void {
-  if (!db || db.kind !== 'twin') throw new Error('gate refuses to run a scenario on a non-twin (live) database');
 }
 
 /** Tiny promise pool: runs fn over items with at most `limit` in flight. Never rejects (fn must catch). */
@@ -79,120 +54,15 @@ export function mergeScenarios(spec: AgentSpec, scenarios: Scenario[]): Scenario
   return out;
 }
 
-interface AttemptResult {
-  summary: ScenarioResultSummary;
-  cost: number;
-  criticalFailed: boolean;
-}
-
-async function safeUpsert(input: repo.ScenarioResultInput): Promise<void> {
-  try {
-    await repo.upsertScenarioResult(input);
-  } catch (err) {
-    console.error('[gate] upsertScenarioResult failed', input.scenario, err);
-  }
-}
-
-async function runAttempt(
-  ctx: { agent: string; version: number; spec: AgentSpec; opts: GateOptions },
-  scenario: Scenario,
-  attempt: number,
-): Promise<AttemptResult> {
-  const { agent, version, spec, opts } = ctx;
-  const base = { agent, version, scenario: scenario.name, attempt, source: scenario.source, pack: scenario.pack ?? null };
-  await safeUpsert({ ...base, status: 'running' });
-
-  let twin: Awaited<ReturnType<typeof createTwin>> | null = null;
-  let runId: string | null = null;
-  let finalReply: string | null = null;
-  let before: Snapshot | null = null;
-  let after: Snapshot | null = null;
-  let diff: TwinDiff | null = null;
-  let outcomes: AssertionOutcome[] = [];
-  let replyCheck: ReplyCheck | null = null;
-  let cost = 0;
-  let status: ScenarioStatus = 'error';
-  try {
-    twin = await createTwin();
-    assertTwinDb(twin.db);
-    await twin.seed(scenario.setup ?? {});
-    before = await twin.snapshot();
-    const r = await runAgent({
-      spec,
-      version,
-      messages: scenario.conversation.map((t) => ({ role: 'user' as const, content: t.user })),
-      db: twin.db,
-      mode: 'scenario',
-      scenario: scenario.name,
-      modelOverride: opts.modelOverride,
-    });
-    runId = r.run_id;
-    finalReply = r.final_reply;
-    cost = Number(r.cost_usd) || 0;
-    after = await twin.snapshot();
-    diff = diffSnapshots(before, after);
-    outcomes = await evaluateAssertions(twin.db, scenario.assert ?? [], finalReply ?? '');
-    status = r.outcome === 'error' ? 'error' : outcomes.every((o) => o.passed) ? 'passed' : 'failed';
-    if (replyJudgeEnabled()) {
-      replyCheck = await judgeReply({ conversation: scenario.conversation, finalReply: finalReply ?? '' });
-    }
-  } catch (err) {
-    console.error('[gate] scenario attempt failed', scenario.name, attempt, err);
-    status = 'error';
-    finalReply = finalReply ?? `Gate error: ${err instanceof Error ? err.message : String(err)}`;
-  } finally {
-    if (twin) await twin.close().catch(() => undefined);
-  }
-
-  await safeUpsert({
-    ...base,
-    status,
-    run_id: runId,
-    assertions: outcomes,
-    reply_check: replyCheck,
-    final_reply: finalReply,
-    diff,
-    before_snapshot: before,
-    after_snapshot: after,
-  });
-  return {
-    cost,
-    // Errors count as failures; an errored attempt cannot prove the critical checks held.
-    criticalFailed: status === 'error' || outcomes.some((o) => o.critical && !o.passed),
-    summary: {
-      scenario: scenario.name,
-      attempt,
-      status,
-      run_id: runId,
-      assertions: outcomes,
-      reply_check: replyCheck,
-      final_reply: finalReply,
-      diff,
-      source: scenario.source,
-      ...(scenario.pack ? { pack: scenario.pack } : {}),
-    },
-  };
-}
-
-/** Pass rate, blocked rule (PRD 12) from per-attempt results grouped by scenario. */
-export function decide(
-  names: string[],
-  attempts: AttemptResult[],
-  minPassRate: number,
-): { status: VersionStatus; pass_rate: number } {
-  if (!names.length) return { status: 'live', pass_rate: 1 };
-  let passed = 0;
-  let criticalMajority = false;
-  for (const name of names) {
-    const mine = attempts.filter((a) => a.summary.scenario === name);
-    const ok = mine.filter((a) => a.summary.status === 'passed').length;
-    const crit = mine.filter((a) => a.criticalFailed).length;
-    if (ok * 2 > mine.length) passed += 1;
-    if (crit * 2 > mine.length) criticalMajority = true;
-  }
-  const pass_rate = passed / names.length;
-  const blocked = pass_rate < minPassRate || criticalMajority;
-  return { status: blocked ? 'blocked' : 'live', pass_rate };
+/** Merged scenarios + paraphrase variants, and one job per (scenario, attempt). Shared with the fan-out queue. */
+export async function planJobs(
+  spec: AgentSpec,
+  merged: Scenario[],
+): Promise<{ scenarios: Scenario[]; jobs: { s: Scenario; attempt: number }[] }> {
+  const scenarios = await expandVariants(merged, spec.gate?.variants ?? 0);
+  const runs = Math.max(1, Math.floor(spec.gate?.runs_per_scenario ?? 1));
+  const jobs = scenarios.flatMap((s) => Array.from({ length: runs }, (_, i) => ({ s, attempt: i + 1 })));
+  return { scenarios, jobs };
 }
 
 async function collectEvents(runIds: (string | null)[]): Promise<RunEvent[]> {
@@ -217,25 +87,14 @@ async function finish(
 ): Promise<GateResult> {
   const { agent, version, spec, startedAt } = args;
   const coverage = computeCoverage(spec, scenarios, await collectEvents(results.map((r) => r.run_id)));
-  const total_cost_usd = Math.round(totalCost * 1e6) / 1e6;
-  await repo.finishVersion(agent, version, { status: decision.status, pass_rate: decision.pass_rate, total_cost_usd });
-  let current: number | null = null;
-  if (decision.status === 'live') {
-    await repo.setCurrentVersion(agent, version);
-    current = version;
-  } else {
-    current = (await repo.getAgent(agent).catch(() => null))?.current_version ?? null;
-  }
   const failed = results.filter((r) => r.status !== 'passed').map((r) => r.scenario);
-  await repo
-    .audit('gate', decision.status, `${agent}@v${version}`, {
-      pass_rate: decision.pass_rate,
-      total_cost_usd,
-      tests: scenarios.length,
-      failed: [...new Set(failed)],
-      ...auditDetail,
-    })
-    .catch((err) => console.error('[gate] audit failed', err));
+  const applied = await applyVerdict(agent, version, decision, totalCost, {
+    tests: scenarios.length,
+    failed: [...new Set(failed)],
+    ...auditDetail,
+  });
+  const total_cost_usd = applied.total_cost_usd;
+  const current = applied.current_version;
   return {
     agent,
     version,
@@ -252,7 +111,7 @@ async function finish(
 }
 
 /** Replays a cached version's results with staggered delays (SHIPYARD_DEMO_REPLAY=1). */
-async function tryReplay(
+export async function tryReplay(
   args: { agent: string; version: number; spec: AgentSpec; specHash: string; startedAt: string },
   scenarios: Scenario[],
 ): Promise<GateResult | null> {
@@ -264,7 +123,7 @@ async function tryReplay(
   for (const r of prior) {
     await sleep(replayDelayMs());
     const snaps = r.run_id ? await repo.getScenarioResultByRun(r.run_id).catch(() => null) : null;
-    await safeUpsert({
+    await repo.upsertScenarioResult({
       agent: args.agent,
       version: args.version,
       scenario: r.scenario,
@@ -279,7 +138,7 @@ async function tryReplay(
       after_snapshot: snaps?.after_snapshot ?? null,
       source: r.source,
       pack: r.pack ?? null,
-    });
+    }).catch((err) => console.error('[gate] replay upsert failed', r.scenario, err));
   }
   const names = [...new Set(prior.map((r) => r.scenario))];
   const replayScenarios = names.map(
@@ -306,9 +165,7 @@ export const runGate = async (
     const replay = await tryReplay({ agent, version, spec, specHash, startedAt }, merged);
     if (replay) return replay;
 
-    const scenarios = await expandVariants(merged, spec.gate?.variants ?? 0);
-    const runs = Math.max(1, Math.floor(spec.gate?.runs_per_scenario ?? 1));
-    const jobs = scenarios.flatMap((s) => Array.from({ length: runs }, (_, i) => ({ s, attempt: i + 1 })));
+    const { scenarios, jobs } = await planJobs(spec, merged);
     const ctx = { agent, version, spec, opts };
     const attempts = await pool(jobs, gateConcurrency(), ({ s, attempt }) => runAttempt(ctx, s, attempt));
 
@@ -329,7 +186,7 @@ export const runGate = async (
   } catch (err) {
     console.error('[gate] fatal', err);
     await repo
-      .finishVersion(agent, version, { status: 'error', pass_rate: null, total_cost_usd: null })
+      .finishVersionIfRunning(agent, version, { status: 'error', pass_rate: null, total_cost_usd: null })
       .catch(() => undefined);
     await repo.audit('gate', 'error', `${agent}@v${version}`, { error: String(err) }).catch(() => undefined);
     return {

@@ -430,3 +430,158 @@ export async function countDeploysSince(since: Date): Promise<number> {
   const rows = await sql`select count(*) as n from agent_versions where started_at > ${since}`;
   return num(rows[0]?.n);
 }
+
+// ---------- gate queue (fan-out: one serverless invocation per scenario attempt) ----------
+// scenario_results.status only allows running/passed/failed/error, so a queued attempt is a 'running' row whose
+// before_snapshot is the marker {"__gate":"queued","scenario":{...}}. Claiming flips __gate to "started" and
+// resets created_at (the start time used by the stale sweeper). The final upsert overwrites before_snapshot.
+export const GATE_MARK = '__gate';
+
+export interface QueuedAttempt {
+  scenario: string;
+  attempt: number;
+}
+
+/** Inserts one queued row per attempt (ignores rows that already exist). */
+export async function insertQueuedScenarioResults(
+  agent: string,
+  version: number,
+  jobs: { scenario: { name: string; source?: ScenarioSource; pack?: string }; attempt: number }[],
+): Promise<void> {
+  for (let i = 0; i < jobs.length; i += 50) {
+    const rows = jobs.slice(i, i + 50).map(({ scenario, attempt }) => {
+      const inferred = inferScenarioSource(scenario.name);
+      const source = scenario.source ?? inferred.source;
+      return {
+        agent,
+        version,
+        scenario: scenario.name,
+        attempt,
+        status: 'running',
+        before_snapshot: json({ [GATE_MARK]: 'queued', scenario }),
+        source,
+        pack: scenario.pack ?? (source === 'pack' ? (inferred.pack ?? null) : null),
+      };
+    });
+    await sql`
+      insert into scenario_results ${sql(rows as never, 'agent', 'version', 'scenario', 'attempt', 'status', 'before_snapshot', 'source', 'pack')}
+      on conflict (agent, version, scenario, attempt) do nothing`;
+  }
+}
+
+/**
+ * Atomically claims up to (limit - in-flight) queued attempts for a version. A transaction-scoped advisory lock
+ * per version makes the in-flight bound hold across concurrent claimers (workers, the coordinator, GET polls).
+ */
+export async function claimQueuedScenarios(agent: string, version: number, limit: number): Promise<QueuedAttempt[]> {
+  const out = await sql.begin(async (tx) => {
+    await tx`select pg_advisory_xact_lock(hashtext(${`gate:${agent}@${version}`}))`;
+    const counted = await tx`
+      select count(*)::int as n from scenario_results
+      where agent = ${agent} and version = ${version} and status = 'running'
+        and (before_snapshot is null or before_snapshot->>'__gate' is distinct from 'queued')`;
+    const free = limit - num(counted[0]?.n);
+    if (free <= 0) return [] as QueuedAttempt[];
+    const rows = await tx`
+      update scenario_results
+      set before_snapshot = jsonb_set(before_snapshot, '{__gate}', '"started"'), created_at = now()
+      where id in (
+        select id from scenario_results
+        where agent = ${agent} and version = ${version} and status = 'running'
+          and before_snapshot->>'__gate' = 'queued'
+        order by id limit ${free}
+        for update skip locked)
+      returning scenario, attempt`;
+    return rows.map((r) => ({ scenario: String(r.scenario), attempt: num(r.attempt) }));
+  });
+  return out as QueuedAttempt[];
+}
+
+/** Puts a claimed attempt back in the queue (its dispatch failed and there is no time left to run it inline). */
+export async function unclaimScenario(agent: string, version: number, scenario: string, attempt: number): Promise<void> {
+  await sql`
+    update scenario_results set before_snapshot = jsonb_set(before_snapshot, '{__gate}', '"queued"')
+    where agent = ${agent} and version = ${version} and scenario = ${scenario} and attempt = ${attempt}
+      and status = 'running' and before_snapshot->>'__gate' = 'started'`;
+}
+
+/** A claimed attempt's scenario definition, or null when it is not in the 'started' state (done, queued, missing). */
+export async function getStartedScenario(
+  agent: string,
+  version: number,
+  scenario: string,
+  attempt: number,
+): Promise<Record<string, unknown> | null> {
+  const rows = await sql`
+    select before_snapshot->'scenario' as s from scenario_results
+    where agent = ${agent} and version = ${version} and scenario = ${scenario} and attempt = ${attempt}
+      and status = 'running' and before_snapshot->>'__gate' = 'started'`;
+  return (rows[0]?.s as Record<string, unknown> | null) ?? null;
+}
+
+/** Counts of a version's attempts by queue state. */
+export async function scenarioQueueCounts(
+  agent: string,
+  version: number,
+): Promise<{ queued: number; inflight: number; done: number; total: number }> {
+  const rows = await sql`
+    select
+      count(*) filter (where status = 'running' and before_snapshot->>'__gate' = 'queued')::int as queued,
+      count(*) filter (where status = 'running' and (before_snapshot is null or before_snapshot->>'__gate' is distinct from 'queued'))::int as inflight,
+      count(*) filter (where status <> 'running')::int as done,
+      count(*)::int as total
+    from scenario_results where agent = ${agent} and version = ${version}`;
+  const r = rows[0] ?? {};
+  return { queued: num(r.queued), inflight: num(r.inflight), done: num(r.done), total: num(r.total) };
+}
+
+/**
+ * Stale sweeper: attempts in flight longer than `attemptSecs` become 'error'; when the version itself has been
+ * running longer than `versionSecs`, every unfinished attempt (queued included) becomes 'error'. Returns rows swept.
+ */
+export async function sweepStaleScenarioResults(
+  agent: string,
+  version: number,
+  attemptSecs: number,
+  versionSecs: number,
+): Promise<number> {
+  const attemptMsg = `Gate error: this test's worker did not finish within ${Math.round(attemptSecs / 60)} minutes (timed out or crashed).`;
+  const versionMsg = `Gate error: the gate did not finish within ${Math.round(versionSecs / 60)} minutes; this test never completed.`;
+  const a = await sql`
+    update scenario_results
+    set status = 'error', final_reply = ${attemptMsg}, before_snapshot = null
+    where agent = ${agent} and version = ${version} and status = 'running'
+      and (before_snapshot is null or before_snapshot->>'__gate' is distinct from 'queued')
+      and created_at < now() - make_interval(secs => ${attemptSecs})
+    returning id`;
+  const b = await sql`
+    update scenario_results
+    set status = 'error', final_reply = ${versionMsg}, before_snapshot = null
+    where agent = ${agent} and version = ${version} and status = 'running'
+      and exists (select 1 from agent_versions v where v.agent = ${agent} and v.version = ${version}
+                  and v.started_at < now() - make_interval(secs => ${versionSecs}))
+    returning id`;
+  return a.length + b.length;
+}
+
+/** Sum of runs.cost_usd for the given run ids. */
+export async function sumRunCosts(runIds: string[]): Promise<number> {
+  const ids = [...new Set(runIds.filter(Boolean))];
+  if (!ids.length) return 0;
+  const rows = await sql`select coalesce(sum(cost_usd), 0) as c from runs where id::text in ${sql(ids)}`;
+  return num(rows[0]?.c);
+}
+
+/** Idempotent finish: only moves a version out of 'running'. Returns true if this call did it. */
+export async function finishVersionIfRunning(
+  agent: string,
+  version: number,
+  result: { status: VersionStatus; pass_rate: number | null; total_cost_usd: number | null },
+): Promise<boolean> {
+  const rows = await sql`
+    update agent_versions set status = ${result.status}, pass_rate = ${result.pass_rate},
+      total_cost_usd = ${result.total_cost_usd}, finished_at = now()
+    where agent = ${agent} and version = ${version} and status = 'running'
+    returning version`;
+  return rows.length > 0;
+}
