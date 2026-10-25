@@ -2,6 +2,7 @@
 import { generateText, Output, type LanguageModel } from 'ai';
 import { z } from 'zod';
 import type { ReplyCheck } from '../types';
+import { assertBudget } from '../runtime/budget';
 import { fastModel } from './llm';
 
 const Verdict = z.object({
@@ -19,6 +20,8 @@ export async function judgeReply(input: {
   model?: LanguageModel;
 }): Promise<ReplyCheck | null> {
   try {
+    // Over budget: no judge (informational, so it just yields null). Injected test models skip the check.
+    if (!input.model) await assertBudget();
     const transcript = input.conversation.map((t, i) => `User (turn ${i + 1}): ${t.user}`).join('\n');
     const { output } = await generateText({
       model: fastModel(input.model),

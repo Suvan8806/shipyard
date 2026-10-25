@@ -6,7 +6,8 @@ import { z } from 'zod';
 import type { AgentSpec, Assertion, GenerateScenariosFn, Scenario } from '../types';
 import { SYS_TABLES } from '../sysdb/schema';
 import { POLICIES, PROFILES, getTool } from '../library';
-import { resolveModel } from '../runtime/model';
+import { resilientFor } from '../runtime/model';
+import { assertBudget } from '../runtime/budget';
 import { validateScenarioObject } from './validate';
 
 export const MAX_GENERATED = 20;
@@ -106,10 +107,15 @@ function buildPrompt(spec: AgentSpec, count: number): string {
 export const generateScenarios: GenerateScenariosFn = async (spec, count) => {
   const n = Math.max(1, Math.min(MAX_GENERATED, Math.floor(count) || 1));
   const profile = PROFILES.careful;
+  await assertBudget(); // throws BudgetExceededError (the service maps it to HTTP 402)
   let proposals: GenScenarioT[] = [];
   try {
+    const { model } = resilientFor(profile.model, {
+      budgetMs: 60_000,
+      onSkip: (s) => console.warn(`[generate] ${s.reason}: ${s.model}${s.fallbackTo ? ` -> ${s.fallbackTo}` : ''} (${s.error})`),
+    });
     const { output } = await generateText({
-      model: resolveModel(profile.model),
+      model,
       output: Output.object({ schema: GenOutput }),
       prompt: buildPrompt(spec, n),
       temperature: 0.7,

@@ -13,6 +13,9 @@ Updated: 2026-10-24
 | T1 test-pack engine | done | 35bc604 | `lib/gate/packs.ts`; support-agent expands to 39 pack scenarios; bundled on Vercel (verified) |
 | T4 variants | done | 4c38fd4 | `lib/gate/variants.ts`, gate.variants (max 3), names `<scenario>~v<i>`, cached by hash |
 | T5 coverage | done | 4c38fd4 | `lib/gate/coverage.ts` from run events (tool_call/policy_block/approval) + assertion tables |
+| R1 error classification | done | (this commit) | `classifyModelError`: dead (credits/quota w/o retry hint/bad key/401-403) -> skip now + 10-min process-wide mark (provider-wide for key-level); tool_format (`<\|`, "Tool call validation failed") -> retry once then next model; 413 -> next model; throttle -> backoff. Chain entries without an API key dropped. Trace events `error/provider_dead`, `error/tool_format`. Generate now uses the resilient chain too |
+| R2 budget cap | done | (this commit) | SHIPYARD_BUDGET_USD (default 8) vs sum(runs.cost_usd), cached 30 s (`lib/runtime/budget.ts`, `repo.totalSpendUsd`). Runner: outcome error + "Budget reached ($X of $Y)..."; deploy/chat/generate/simulate: HTTP 402 `budget_exceeded`; judge/paraphrase skip. GET /api/health -> {ok, spend_usd, budget_usd} |
+| R3 coverage for fan-out | done | (this commit) | No coverage column, so `getGateResult` computes it on read (scenario_results + one `listToolEventsForRuns` query); variants resolve to their base scenario |
 
 ## B1 numbers (Vercel preview, 2048 MB function, iad1 default)
 Probe: base `PGlite.create()` + SYS_SCHEMA_SQL, then 4 concurrent `clone()`, seed + snapshot + insert + diff each.

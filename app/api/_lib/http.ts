@@ -2,6 +2,7 @@
 import type { z } from 'zod';
 import type { ApiError, ApiErrorCode } from '@/lib/contracts/api';
 import { ERROR_STATUS, ServiceError, isServiceError } from '@/lib/services/errors';
+import { isBudgetExceeded } from '@/lib/runtime/budget';
 import { requireAdmin as guardAdmin, rateLimitReq, type LimitBucket } from '@/lib/services/guard';
 
 export function ok<T>(data: T, init?: ResponseInit): Response {
@@ -16,6 +17,7 @@ export function fail(code: ApiErrorCode, message: string, details?: unknown): Re
 /** Map any thrown error to the ApiError envelope. */
 export function errorResponse(e: unknown): Response {
   if (isServiceError(e)) return fail(e.code, e.message, e.details);
+  if (isBudgetExceeded(e)) return fail('budget_exceeded', e.message, { spend_usd: e.spendUsd, budget_usd: e.budgetUsd });
   const message = e instanceof Error ? e.message : String(e);
   console.error('[api] unhandled error:', e);
   return fail('internal', message.includes('SUPABASE_DB_URL') ? 'database is not configured' : 'internal error');

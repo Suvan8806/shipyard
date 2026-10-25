@@ -37,3 +37,18 @@ export function computeCoverage(spec: AgentSpec, scenarios: Scenario[], events: 
     by_source: bySource,
   };
 }
+
+/** `<name>~v<i>` paraphrase variants share their base scenario's assertions. */
+export const baseScenarioName = (name: string) => name.replace(/~v\d+$/, '');
+
+/**
+ * The scenario list behind a gate's names (for coverage on read): each name resolves to its definition (or its
+ * variant's base), else to `stub(name)` (a deleted or pack scenario we can no longer load).
+ */
+export function scenariosForNames(known: Scenario[], names: string[], stub: (name: string) => Scenario): Scenario[] {
+  const byName = new Map(known.map((s) => [s.name, s]));
+  return names.map((name) => {
+    const def = byName.get(name) ?? byName.get(baseScenarioName(name));
+    return def ? { ...def, name } : stub(name);
+  });
+}
