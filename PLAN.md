@@ -1,5 +1,13 @@
 # Shipyard PLAN
 
+## ☀ MORNING BRIEFING (2026-10-25)
+**Prod (main `52508fe`) is demo-ready:** https://shipyard-silk-beta.vercel.app. Reset and clean: 8 agents, support-agent **v3 LIVE** (46/46), **v4 BLOCKED** (the demo bad edit), draft = good spec. Spend **$1.22 / $8** cap (Gemini prepay $10, auto-reload off).
+**Shipped overnight to prod:** design polish (Impeccable), budget cap + provider fallback, review fixes (spend counted per step, reset token, atomic approvals), MCP descriptions + per-request replay (`?replay=1`), QA fixes (correct 46 count, "Live v3 · latest v4 blocked" badge, spotlight on second-credit-this-month, reply-flagged label, coverage 0 untested, real 404s, a11y), README/DEVPOST/PITCH, final screenshots, launch video (`brag-output/brag.mp4`, not in git).
+**MCP demo rehearsed on prod:** payment-reminder-agent created first try; v1 blocked 18/20 (real agent mistakes), v2 live 20/20 in 15 s for $0.006. The DEMO.md prompt is tightened so a fresh Claude Code run should pass first time. Prod was reset afterwards.
+**On `dev` only (your call to ship):** Stress Lab (reliability ×N + flakiness, red-team swarm, model matrix, version diff) + its UI + MCP tools, and the `shipyard` CLI (`npm run shipyard -- --help`, live terminal gate board, `--ci` exit codes) + a GitHub Action (disabled by default). Preview: https://shipyard-git-dev-suvan8806s-projects.vercel.app (log in to Vercel to view). Merging `dev` → `main` adds features but risks the demo; recommendation: ship it only after one rehearsal on the dev preview.
+**Your to-do:** (1) Devpost: paste `DEVPOST.md` + `brag-output/share-copy.txt`, add the video. (2) Watch `brag-output/brag.mp4`. (3) Practice `docs/PITCH.md`. (4) Follow `agents/DEMO.md` for the runbook + backup video recording. (5) Decide on dev → main.
+**Reset (keep private):** `curl -X POST -H "Authorization: Bearer <token from chat>" https://shipyard-silk-beta.vercel.app/api/admin/reset-live`
+
 ## ▶ RESUME HERE (session paused 2026-10-24)
 **Live:** https://shipyard-silk-beta.vercel.app (prod = `main`, auto-deploys on push) · **Repo:** https://github.com/Suvan8806/shipyard (public) · Supabase project `oicyziasyqufalmvoulp`
 **Rule:** O0 orchestrates only; subagents write all code. Launch builders with the Agent tool directly (workflow agents can't spawn sub-builders).
