@@ -9,12 +9,12 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { getGate, replayGate, USE_MOCKS } from '../api';
 import { fmtCost, fmtDuration, fmtPct } from '../format';
-import { ErrorState, Skeleton, StaleNotice } from '../states';
+import { ErrorState, isNotFound, NotFoundState, Skeleton, StaleNotice } from '../states';
 import { StatusPill } from '../status';
 import { useData, useNow } from '../use-data';
 import { GateCard } from './gate-card';
 import { CatchSpotlight, RunningPanel, VerdictBanner } from './gate-banner';
-import { boardResults, countResults, groupResults, isCriticalFail, tagCodes, verdicts, type GateCounts } from './gate-model';
+import { boardResults, countResults, groupResults, pickSpotlight, tagCodes, type GateCounts } from './gate-model';
 
 type Filter = 'all' | 'failed' | 'critical' | 'errored';
 /** No tag finished for this long while running: switch to the calm "still running" copy. */
@@ -173,14 +173,30 @@ export function GateBoard({ name, version }: { name: string; version: number }) 
     return [...gs].sort((a, b) => hasFail(a) - hasFail(b));
   }, [all, filter, gate?.status]);
   const lastProgress = useLastProgress(gate ? counts.done : undefined);
-  // The spotlight shows the catch: a reply-vs-data disagreement if there is one, else the first critical failure,
-  // else any failure. Only once the verdict is in.
+  // The spotlight shows the catch: a reply-vs-data disagreement if there is one (the agent's own spec scenarios
+  // first, then packs), else the first critical failure, else any failure. Only once the verdict is in.
   const failures = all.filter((r) => r.status === 'failed');
-  const spotlight = running
-    ? undefined
-    : (failures.find((r) => verdicts(r).disagree) ?? failures.find(isCriticalFail) ?? failures[0]);
+  const spotlight = running ? undefined : pickSpotlight(all);
 
-  if (!valid) return <ErrorState title="That isn't a version number." error={new Error(`"${String(version)}" is not a valid version.`)} />;
+  if (!valid) {
+    return (
+      <NotFoundState title="Version not found" backHref={`/agents/${encodeURIComponent(name)}`} backLabel={`Back to ${name}`}>
+        That isn&apos;t a version number.
+      </NotFoundState>
+    );
+  }
+  if (!gate && isNotFound(error)) {
+    const agentMissing = error?.message.startsWith('agent ');
+    return agentMissing ? (
+      <NotFoundState title="Agent not found">
+        There is no agent named <span className="font-mono text-foreground">{name}</span>.
+      </NotFoundState>
+    ) : (
+      <NotFoundState title="Version not found" backHref={`/agents/${encodeURIComponent(name)}`} backLabel={`Back to ${name}`}>
+        <span className="font-mono text-foreground">{name}</span> has no v{version}.
+      </NotFoundState>
+    );
+  }
   if (error && !gate) return <ErrorState title={`Could not load the gate for ${name} v${version}.`} error={error} onRetry={refetch} />;
   if (!gate) return <GateBoardSkeleton />;
 

@@ -2,8 +2,9 @@
 // Shared loading / empty / error states for every dashboard fetch.
 // Convention: render <ErrorState> only when there is no data yet (`error && !data`). When a poll or refetch fails
 // after data loaded, keep showing the stale data and surface <StaleNotice> (or a toast) instead.
+import Link from 'next/link';
 import type { ReactNode } from 'react';
-import { RotateCw, TriangleAlert, WifiOff } from 'lucide-react';
+import { ArrowLeft, RotateCw, SearchX, TriangleAlert, WifiOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
@@ -11,6 +12,43 @@ import { ApiRequestError } from './api';
 
 function isNetwork(error: Error): boolean {
   return error instanceof ApiRequestError && (error.code === 'network' || error.status === 0);
+}
+
+/** True when the API confirmed the thing does not exist (HTTP 404). */
+export function isNotFound(error: unknown): boolean {
+  return error instanceof ApiRequestError && error.status === 404;
+}
+
+/** Styled "not found" page body: unknown agent, version, run, or URL. */
+export function NotFoundState({
+  title,
+  children,
+  backHref = '/agents',
+  backLabel = 'Back to agents',
+}: {
+  title: string;
+  children?: ReactNode;
+  backHref?: string;
+  backLabel?: string;
+}) {
+  return (
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 py-6">
+      <p className="font-mono text-sm font-semibold tracking-wide text-muted-foreground">404</p>
+      <div className="flex items-start gap-3">
+        <SearchX className="mt-1 size-6 shrink-0 text-muted-foreground" aria-hidden />
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold tracking-tight text-balance">{title}</h1>
+          {children && <p className="mt-1 max-w-prose text-muted-foreground">{children}</p>}
+        </div>
+      </div>
+      <Link
+        href={backHref}
+        className="inline-flex items-center gap-1 self-start rounded-md border bg-card px-3 py-1.5 text-sm font-semibold hover:border-primary hover:text-primary"
+      >
+        <ArrowLeft className="size-4" aria-hidden /> {backLabel}
+      </Link>
+    </div>
+  );
 }
 
 export function ErrorState({

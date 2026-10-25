@@ -6,13 +6,15 @@ import { toast } from 'sonner';
 import type { RunListItem } from '@/lib/contracts/api';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { errorMessage, getRuns, simulateTraffic } from '../api';
+import { adminToken, errorMessage, getRuns, simulateTraffic, USE_MOCKS } from '../api';
 import { fmtCost, fmtRelative } from '../format';
 import { EmptyState, ErrorState, Skeleton, StaleNotice } from '../states';
 import { useData, useNow } from '../use-data';
 
 export const RUNS_CHANGED_EVENT = 'shipyard:runs-changed';
 const POLL_MS = 5000;
+/** lib/platform/repo.ts slices run previews to this many characters. */
+const PREVIEW_MAX = 140;
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
@@ -21,6 +23,9 @@ export function SimulateTrafficButton({ count = 5, onDone }: { count?: number; o
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const now = useNow(1000, startedAt !== null);
   const busy = startedAt !== null;
+  // Read after mount (the URL isn't known during prerender); never kept beyond a boolean.
+  const [hasToken, setHasToken] = useState(false);
+  useEffect(() => setHasToken(adminToken() !== null), []);
   const run = async () => {
     if (busy) return;
     setStartedAt(Date.now());
@@ -39,6 +44,8 @@ export function SimulateTrafficButton({ count = 5, onDone }: { count?: number; o
     }
   };
   const secs = startedAt !== null ? Math.max(0, Math.floor((now - startedAt) / 1000)) : 0;
+  // The API rejects simulate without the admin token, so only show the button when the URL carries ?token=.
+  if (!USE_MOCKS && !hasToken) return null;
   return (
     <Button variant="outline" onClick={run} disabled={busy} aria-live="polite">
       {busy ? <Loader2 className="animate-spin" aria-hidden /> : <Zap aria-hidden />}
@@ -61,7 +68,9 @@ function Tag({ children, className }: { children: ReactNode; className?: string 
 
 function RunRow({ r, now }: { r: RunListItem; now: number }) {
   const inFlight = isInFlight(r);
-  const preview = r.preview ?? (inFlight ? 'No reply yet' : r.scenario ? null : 'No reply');
+  // The API cuts previews at PREVIEW_MAX chars with no marker; add the ellipsis so a cut snippet reads as one.
+  const cut = r.preview && r.preview.length >= PREVIEW_MAX ? `${r.preview.trimEnd()}…` : r.preview;
+  const preview = cut ?? (inFlight ? 'No reply yet' : r.scenario ? null : 'No reply');
   return (
     <li>
       <Link href={`/runs/${r.id}`} className="block px-4 py-2.5 outline-none hover:bg-accent focus-visible:bg-accent">
@@ -83,7 +92,7 @@ function RunRow({ r, now }: { r: RunListItem; now: number }) {
           )}
           <span className="ml-auto tabular-nums text-muted-foreground">{fmtRelative(r.started_at, now)}</span>
         </div>
-        <p className="mt-0.5 line-clamp-1 text-sm text-muted-foreground">
+        <p className="mt-0.5 truncate text-sm text-muted-foreground" title={r.preview ?? undefined}>
           {r.scenario && <span className="font-mono text-xs">{r.scenario}</span>}
           {r.scenario && preview && ' · '}
           {preview && <span className={cn(!r.preview && 'italic')}>{preview}</span>}

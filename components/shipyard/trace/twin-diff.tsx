@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { Database } from 'lucide-react';
 import type { Row, Snapshot, TableDiff, TwinDiff } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import { fmtDateTime } from '../format';
 import { EmptyState } from '../states';
 
 type Kind = 'added' | 'removed' | 'changed' | 'context' | 'same';
@@ -38,15 +39,16 @@ function cell(col: string, v: unknown): string {
     }
   }
   const s = String(v);
-  return /^\d{4}-\d{2}-\d{2}T/.test(s) ? s.slice(5, 16).replace('T', ' ') : s;
+  // ISO timestamps in local time, formatted like the run header.
+  return /^\d{4}-\d{2}-\d{2}T/.test(s) && !Number.isNaN(Date.parse(s)) ? fmtDateTime(s) : s;
 }
 
 const GLYPH: Record<Kind, string> = { added: '+', removed: '−', changed: '~', context: '', same: '' };
 
 function RowsTable({ rows, cols }: { rows: DiffRow[]; cols: string[] }) {
   return (
-    <div className="overflow-x-auto rounded-md border">
-      <table className="w-full font-mono text-xs">
+    <div className="max-w-full min-w-0 overflow-x-auto rounded-md border">
+      <table className="w-full min-w-max font-mono text-xs">
         <thead className="border-b bg-muted/60 text-left text-muted-foreground">
           <tr>
             <th className="w-6" aria-label="Change" />
@@ -157,7 +159,7 @@ function DiffTables({ diff, before }: { diff: TwinDiff; before: Snapshot | null 
           ...added.map((row) => ({ kind: 'added' as const, row })),
         ];
         return (
-          <div key={table} className="flex flex-col gap-1.5">
+          <div key={table} className="flex min-w-0 flex-col gap-1.5">
             <h3 className="flex items-baseline gap-2 font-mono text-sm font-semibold">
               {table}
               <span className="text-xs font-normal text-muted-foreground tabular-nums">
@@ -178,7 +180,7 @@ function SnapshotTables({ snap }: { snap: Snapshot }) {
   return (
     <>
       {tables.map(([table, rows]) => (
-        <div key={table} className="flex flex-col gap-1.5">
+        <div key={table} className="flex min-w-0 flex-col gap-1.5">
           <h3 className="flex items-baseline gap-2 font-mono text-sm font-semibold">
             {table} <span className="text-xs font-normal text-muted-foreground tabular-nums">{rows!.length} rows</span>
           </h3>
@@ -208,7 +210,7 @@ export function TwinDiffPanel({
   const active: View = hasSnap ? view : 'changes';
 
   return (
-    <section id="twin-diff" className="flex scroll-mt-6 flex-col gap-3 rounded-md border bg-card p-4" aria-label="Twin diff">
+    <section id="twin-diff" className="flex min-w-0 scroll-mt-6 flex-col gap-3 rounded-md border bg-card p-4" aria-label="Twin diff">
       <header className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h2 className="text-lg font-semibold">Twin diff</h2>

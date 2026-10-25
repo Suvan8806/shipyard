@@ -1,11 +1,11 @@
 'use client';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import type { ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { ArrowRight, Bot, Loader2 } from 'lucide-react';
 import type { AgentSummary } from '@/lib/contracts/api';
 import { Button } from '@/components/ui/button';
-import { getAgents } from '../api';
+import { getAgent, getAgents, getGate } from '../api';
 import { fmtCost, fmtPct, fmtRelative } from '../format';
 import { EmptyState, ErrorState, StaleNotice, TableSkeleton } from '../states';
 import { StatusPill } from '../status';
@@ -14,6 +14,8 @@ import { ActivityFeed, SimulateTrafficButton } from '../activity/activity';
 import { useDeploy } from './use-deploy';
 
 const POLL_MS = 5000;
+/** The agent the stage demo opens (agents/DEMO.md). */
+const DEMO_AGENT = 'support-agent';
 const agentHref = (a: AgentSummary) => `/agents/${encodeURIComponent(a.name)}`;
 const gateHref = (a: AgentSummary, v: number) => `${agentHref(a)}/versions/${v}`;
 
@@ -48,22 +50,50 @@ function RowAction({ a }: { a: AgentSummary }) {
   );
 }
 
-/** Live version, plus a note when the newest gate is a different version. */
-function LiveVersion({ a }: { a: AgentSummary }) {
-  const differs = a.latest_version !== null && a.latest_version !== a.current_version;
+/** What the newest gate attempt is, when it isn't the serving version ("latest v4 blocked"). */
+function latestNote(a: AgentSummary): string | null {
+  if (a.latest_version === null || a.latest_version === a.current_version) return null;
+  const v = `v${a.latest_version}`;
+  switch (a.latest_status) {
+    case 'blocked':
+      return `latest ${v} blocked`;
+    case 'running':
+      return `${v} gate running`;
+    case 'live':
+      return `${v} passed · not serving`;
+    case 'error':
+      return `${v} gate error`;
+    default:
+      return null;
+  }
+}
+
+/**
+ * Serving state first ("Live v3"); the newest attempt second when it differs ("latest v4 blocked").
+ * With nothing serving, the newest attempt's status is the primary pill.
+ */
+function ServingStatus({ a, linkLatest = true }: { a: AgentSummary; linkLatest?: boolean }) {
+  const note = a.current_version !== null ? latestNote(a) : null;
   return (
-    <div className="flex flex-col">
-      <span className={a.current_version === null ? 'text-muted-foreground' : 'font-mono font-semibold'}>
-        {a.current_version === null ? 'none' : `v${a.current_version}`}
-      </span>
-      {differs && a.latest_version !== null && (
-        <Link
-          href={gateHref(a, a.latest_version)}
-          onClick={(e) => e.stopPropagation()}
-          className="text-xs whitespace-nowrap text-muted-foreground hover:text-foreground hover:underline"
-        >
-          latest <span className="font-mono">v{a.latest_version}</span> · {a.latest_status}
-        </Link>
+    <div className="flex flex-col items-start gap-0.5">
+      {a.current_version !== null ? (
+        <StatusPill status="live" label={`Live v${a.current_version}`} />
+      ) : (
+        <StatusPill status={a.latest_status} />
+      )}
+      {note && a.latest_version !== null && (
+        linkLatest ? (
+          <Link
+            href={gateHref(a, a.latest_version)}
+            onClick={(e) => e.stopPropagation()}
+            tabIndex={-1}
+            className={`text-xs whitespace-nowrap hover:underline ${a.latest_status === 'blocked' ? 'text-fail' : 'text-muted-foreground hover:text-foreground'}`}
+          >
+            {note}
+          </Link>
+        ) : (
+          <span className={`text-xs whitespace-nowrap ${a.latest_status === 'blocked' ? 'text-fail' : 'text-muted-foreground'}`}>{note}</span>
+        )
       )}
     </div>
   );
@@ -96,15 +126,9 @@ function CounterStrip({ agents }: { agents: AgentSummary[] }) {
 function AgentRow({ a, now }: { a: AgentSummary; now: number }) {
   const router = useRouter();
   const open = () => router.push(agentHref(a));
+  // The whole row is a mouse target; keyboard users get one tab stop per row (the name link) plus the row action.
   return (
-    <tr
-      tabIndex={0}
-      onClick={open}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') open();
-      }}
-      className="cursor-pointer outline-none hover:bg-accent focus-visible:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
-    >
+    <tr onClick={open} className="cursor-pointer hover:bg-accent focus-within:bg-accent">
       <td className="px-4 py-2.5">
         <Link href={agentHref(a)} onClick={(e) => e.stopPropagation()} className="font-mono font-semibold whitespace-nowrap hover:underline">
           {a.name}
@@ -112,10 +136,12 @@ function AgentRow({ a, now }: { a: AgentSummary; now: number }) {
         <div className="text-xs text-muted-foreground">{a.team ?? 'No team'}{a.owner ? ` · ${a.owner}` : ''}</div>
       </td>
       <td className="px-3 py-2.5">
-        <LiveVersion a={a} />
+        <span className={a.current_version === null ? 'text-muted-foreground' : 'font-mono font-semibold'}>
+          {a.current_version === null ? 'none' : `v${a.current_version}`}
+        </span>
       </td>
       <td className="px-3 py-2.5">
-        <StatusPill status={a.latest_status} />
+        <ServingStatus a={a} />
       </td>
       <td className="px-3 py-2.5 text-right font-mono tabular-nums">{fmtPct(a.pass_rate)}</td>
       <td className="px-3 py-2.5 text-right font-mono tabular-nums">{fmtCost(a.avg_cost_usd)}</td>
@@ -135,14 +161,9 @@ function AgentCard({ a }: { a: AgentSummary }) {
         <Link href={agentHref(a)} className="truncate font-mono font-semibold hover:underline">
           {a.name}
         </Link>
-        <StatusPill status={a.latest_status} />
+        <ServingStatus a={a} linkLatest={false} />
       </div>
-      <div className="text-xs text-muted-foreground">
-        {a.team ?? 'No team'} · live <span className="font-mono">{a.current_version === null ? 'none' : `v${a.current_version}`}</span>
-        {a.latest_version !== null && a.latest_version !== a.current_version && (
-          <> · latest <span className="font-mono">v{a.latest_version}</span></>
-        )}
-      </div>
+      <div className="text-xs text-muted-foreground">{a.team ?? 'No team'}</div>
       <div className="flex items-center justify-between gap-2 font-mono text-xs">
         <span>
           {fmtPct(a.pass_rate)} pass · {fmtCost(a.avg_cost_usd)}/run
@@ -186,9 +207,33 @@ function AgentsTable({ agents, now }: { agents: AgentSummary[]; now: number }) {
   );
 }
 
+/**
+ * Once per mount, warm what the demo clicks next: the demo agent's detail and its serving + latest gates (API GETs
+ * that wake the functions and DB) and the matching routes. Warm-up only, so failures are ignored.
+ */
+function usePrewarmDemo(agents: AgentSummary[] | null) {
+  const router = useRouter();
+  const done = useRef(false);
+  useEffect(() => {
+    if (done.current || !agents) return;
+    done.current = true;
+    const a = agents.find((x) => x.name === DEMO_AGENT);
+    if (!a) return;
+    const versions = [...new Set([a.current_version, a.latest_version].filter((v): v is number => v !== null))];
+    const ignore = () => undefined;
+    void getAgent(a.name).catch(ignore);
+    router.prefetch(agentHref(a));
+    for (const v of versions) {
+      void getGate(a.name, v).catch(ignore);
+      router.prefetch(gateHref(a, v));
+    }
+  }, [agents, router]);
+}
+
 export function AgentsList() {
   const { data, error, loading, refetch } = useData('agents', getAgents, { pollMs: POLL_MS });
   const now = useNow(30000);
+  usePrewarmDemo(data);
 
   let body: ReactNode;
   if (loading && !data) body = <TableSkeleton rows={8} cols={6} />;
